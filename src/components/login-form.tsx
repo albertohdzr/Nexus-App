@@ -1,3 +1,5 @@
+"use client"
+
 import { cn } from "@/src/lib/utils"
 import { Button } from "@/src/components/ui/button"
 import {
@@ -9,13 +11,80 @@ import {
 } from "@/src/components/ui/field"
 import { Input } from "@/src/components/ui/input"
 import Link from "next/link"
+import { useState } from "react"
+import { createClient } from "@/src/lib/supabase/client"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"form">) {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+  const supabase = createClient()
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      const { data: { user }, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+
+      if (user) {
+        // Check user role for redirection
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("role, force_password_change")
+          .eq("id", user.id)
+          .single()
+
+        // Check if superadmin using the database function as a fallback or primary check if needed
+        // But checking the role directly is faster here if we trust the profile
+        // The prompt implies checking if it's a superadmin.
+        // Let's assume 'superadmin' role exists or we check the boolean function if role is ambiguous.
+        // Based on previous context, there is an `is_superadmin` function.
+        // But let's check the role column first.
+
+        // Check for forced password change
+        if (profile?.force_password_change) {
+          router.push("/change-password")
+          return
+        }
+
+        // If the role is 'superadmin' (assuming that's the role name for superadmins)
+        // Or we can call the RPC function `is_superadmin`
+
+        const { data: isSuperAdmin } = await supabase.rpc('is_superadmin', { user_id: user.id })
+
+        if (isSuperAdmin) {
+          router.push("/superadmin/organizations")
+        } else {
+          router.push("/dashboard")
+        }
+
+        toast.success("Logged in successfully")
+      }
+    } catch (error) {
+      toast.error("An unexpected error occurred")
+      console.error(error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <form className={cn("flex flex-col gap-6", className)} {...props}>
+    <form className={cn("flex flex-col gap-6", className)} onSubmit={handleLogin} {...props}>
       <FieldGroup>
         <div className="flex flex-col items-center gap-1 text-center">
           <h1 className="text-2xl font-bold">Login to your account</h1>
@@ -25,7 +94,14 @@ export function LoginForm({
         </div>
         <Field>
           <FieldLabel htmlFor="email">Email</FieldLabel>
-          <Input id="email" type="email" placeholder="m@example.com" required />
+          <Input
+            id="email"
+            type="email"
+            placeholder="m@example.com"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </Field>
         <Field>
           <div className="flex items-center">
@@ -38,10 +114,18 @@ export function LoginForm({
             </Link>
 
           </div>
-          <Input id="password" type="password" required />
+          <Input
+            id="password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
         </Field>
         <Field>
-          <Button type="submit">Login</Button>
+          <Button type="submit" disabled={loading}>
+            {loading ? "Logging in..." : "Login"}
+          </Button>
         </Field>
         <FieldSeparator>Or continue with</FieldSeparator>
         <Field>

@@ -26,7 +26,7 @@ CREATE TYPE payment_provider AS ENUM ('stripe', 'mercadopago', 'transfer', 'cash
 CREATE TABLE organizations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    subdomain TEXT NOT NULL,
+    slug TEXT NOT NULL,
     logo_url TEXT,
     plan plan_type DEFAULT 'trial',
     settings JSONB DEFAULT '{}', -- Configuración general (colores, branding)
@@ -36,7 +36,7 @@ CREATE TABLE organizations (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
 );
-CREATE UNIQUE INDEX uniq_org_subdomain ON organizations(subdomain) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX uniq_org_slug ON organizations(slug) WHERE deleted_at IS NULL;
 
 -- Perfiles de usuario (Extensión de auth.users)
 CREATE TABLE user_profiles (
@@ -50,6 +50,7 @@ CREATE TABLE user_profiles (
     phone TEXT,
     avatar_url TEXT,
     is_active BOOLEAN DEFAULT true,
+    force_password_change BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(email, organization_id)
@@ -330,9 +331,17 @@ CREATE POLICY "Read organizations" ON organizations
     );
 
 -- --- POLÍTICAS DE PERFILES ---
+CREATE OR REPLACE FUNCTION get_my_org_id()
+RETURNS UUID AS $$
+    SELECT organization_id FROM user_profiles WHERE id = (select auth.uid());
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = public, extensions;
+
 CREATE POLICY "Ver perfiles de mi org" ON user_profiles
     FOR SELECT TO authenticated
-    USING (organization_id IN (SELECT organization_id FROM user_profiles WHERE id = (select auth.uid())));
+    USING (
+        id = (select auth.uid()) -- Can always see own profile
+        OR organization_id = get_my_org_id() -- Can see profiles in same org
+    );
 
 CREATE POLICY "Editar mi propio perfil" ON user_profiles
     FOR UPDATE TO authenticated
