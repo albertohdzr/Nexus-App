@@ -11,6 +11,8 @@ import { sendMessage } from "@/src/app/(dashboard)/chat/actions";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { MoreVertical, Phone, Video, Paperclip, Smile, Send, Check, CheckCheck, Plus } from "lucide-react";
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 type Message = {
     id: string;
@@ -43,10 +45,13 @@ type Chat = {
 export default function ChatWindow() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [chat, setChat] = useState<Chat | null>(null);
+    const [messageInput, setMessageInput] = useState("");
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const supabase = createClient();
     const searchParams = useSearchParams();
     const chatId = searchParams.get("chatId");
     const scrollRef = useRef<HTMLDivElement>(null);
+    const pickerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!chatId) {
@@ -113,6 +118,24 @@ export default function ChatWindow() {
     }, [chatId, supabase]);
 
     useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+                setShowEmojiPicker(false);
+            }
+        }
+
+        if (showEmojiPicker) {
+            document.addEventListener("mousedown", handleClickOutside);
+        } else {
+            document.removeEventListener("mousedown", handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [showEmojiPicker]);
+
+    useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
@@ -120,49 +143,75 @@ export default function ChatWindow() {
 
     const handoverRequested = messages.some((message) => message.payload?.handover);
 
+    const onEmojiClick = (emojiData: EmojiClickData) => {
+        setMessageInput((prev) => prev + emojiData.emoji);
+    };
+
     if (!chatId) {
         return (
-            <div className="flex-1 flex items-center justify-center bg-muted/20 text-muted-foreground">
-                Select a chat to start messaging
+            <div className="flex-1 flex flex-col items-center justify-center bg-muted/10 text-muted-foreground h-full">
+                <div className="bg-muted/30 p-8 rounded-full mb-4">
+                    <Send className="h-12 w-12 opacity-20" />
+                </div>
+                <h3 className="text-lg font-medium text-foreground">Select a chat</h3>
+                <p className="text-sm max-w-xs text-center mt-2">Choose a conversation from the sidebar to start messaging.</p>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-muted/20">
+        <div className="flex-1 flex flex-col h-full bg-muted/10 relative">
+            {/* Background Pattern */}
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
+                style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+                }}
+            />
+
             {/* Header */}
-            <div className="p-4 border-b bg-background flex items-center gap-3">
-                <Avatar>
-                    <AvatarImage src={`https://avatar.vercel.sh/${chat?.wa_id}`} />
-                    <AvatarFallback>{chat?.name ? chat.name.substring(0, 2).toUpperCase() : "WA"}</AvatarFallback>
-                </Avatar>
-                <div>
-                    <h3 className="font-semibold">{chat?.name || chat?.phone_number}</h3>
-                    <p className="text-xs text-muted-foreground">{chat?.phone_number}</p>
+            <div className="p-4 border-b bg-background/80 backdrop-blur-sm flex items-center justify-between z-10 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10 border">
+                        <AvatarImage src={`https://avatar.vercel.sh/${chat?.wa_id}`} />
+                        <AvatarFallback className="bg-primary/10 text-primary">{chat?.name ? chat.name.substring(0, 2).toUpperCase() : "WA"}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <h3 className="font-semibold text-sm">{chat?.name || chat?.phone_number}</h3>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
+                            Online
+                        </p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                        <Phone className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                        <Video className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
                 </div>
             </div>
 
             {handoverRequested && (
-                <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm z-10 flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></div>
                     El bot solicitó conectar con un agente. Responde aquí para tomar el caso.
                 </div>
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
-                {messages.map((message) => {
-                    const isReceived = message.status === 'received'; // Assuming 'received' means from user to us
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 z-0" ref={scrollRef}>
+                {messages.map((message, index) => {
+                    const isReceived = message.status === 'received';
                     const isBot = message.payload?.from === "bot";
-                    const displayName =
-                        message.sender_name ||
-                        (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
                     const displayTime = message.wa_timestamp || message.created_at;
-                    // In a real app, we'd distinguish better between "my messages" and "their messages".
-                    // Since we only receive messages for now, they are all "received" from the contact.
-                    // If we implement sending, we'd check if the message was sent by the system or received from WA.
-                    // For now, let's assume all messages in DB are from the contact (left side) unless we add a flag.
-                    // Actually, usually "received" = from contact. "sent" = from us.
-                    // Let's style them as "received" (left) for now.
+
+                    // Grouping logic could go here (check previous message sender)
+                    const isFirstInGroup = index === 0 || messages[index - 1].status !== message.status;
 
                     return (
                         <div
@@ -174,24 +223,23 @@ export default function ChatWindow() {
                         >
                             <div
                                 className={cn(
-                                    "max-w-[70%] rounded-lg p-3 text-sm",
+                                    "max-w-[70%] px-4 py-2 shadow-sm relative group",
                                     isReceived
-                                        ? "bg-background border shadow-sm"
-                                        : "bg-primary text-primary-foreground"
+                                        ? "bg-background border rounded-2xl rounded-tl-none text-foreground"
+                                        : "bg-primary text-primary-foreground rounded-2xl rounded-tr-none"
                                 )}
                             >
-                                <p>{message.body}</p>
-                                <div className="mt-2 flex items-center justify-between gap-2 text-[10px] opacity-80">
-                                    <span>
-                                        {displayName}
-                                        {message.payload?.handover ? " · Escalada a agente" : ""}
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                        {!isReceived && message.status && (
-                                            <span className="capitalize">{message.status}</span>
-                                        )}
-                                        {format(new Date(displayTime), "HH:mm")}
-                                    </span>
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.body}</p>
+                                <div className={cn(
+                                    "mt-1 flex items-center gap-1 text-[10px]",
+                                    isReceived ? "text-muted-foreground justify-end" : "text-primary-foreground/70 justify-end"
+                                )}>
+                                    <span>{format(new Date(displayTime), "HH:mm")}</span>
+                                    {!isReceived && (
+                                        <span>
+                                            {message.status === 'read' ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -200,34 +248,66 @@ export default function ChatWindow() {
             </div>
 
             {/* Input Area */}
-            <div className="p-4 bg-background border-t">
+            <div className="p-4 bg-background/80 backdrop-blur-sm border-t z-10 relative">
+                {showEmojiPicker && (
+                    <div ref={pickerRef} className="absolute bottom-full right-4 mb-2 z-50 shadow-xl rounded-xl border bg-background">
+                        <EmojiPicker
+                            onEmojiClick={onEmojiClick}
+                            width={300}
+                            height={400}
+                            previewConfig={{ showPreview: false }}
+                        />
+                    </div>
+                )}
                 <form
                     action={async (formData) => {
                         if (!chatId) return;
                         formData.append("chatId", chatId);
-
-                        // Optimistic update could go here if we were using useOptimistic
-                        // For now, we rely on the server action + revalidatePath + realtime subscription
+                        // Ensure the message from state is sent if the input is controlled
+                        formData.set("message", messageInput);
 
                         const result = await sendMessage(formData);
                         if (result.error) {
                             toast.error(result.error);
                         } else {
-                            // Clear input (simple way)
-                            const form = document.getElementById("message-form") as HTMLFormElement;
-                            form?.reset();
+                            setMessageInput("");
+                            setShowEmojiPicker(false);
                         }
                     }}
                     id="message-form"
-                    className="flex gap-2"
+                    className="flex items-end gap-2 max-w-4xl mx-auto"
                 >
-                    <Input
-                        type="text"
-                        name="message"
-                        placeholder="Type a message..."
-                        className="flex-1 p-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        required
-                    />
+                    <div className="flex gap-1 mb-1">
+                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full">
+                            <Plus className="h-5 w-5" />
+                        </Button>
+                    </div>
+
+                    <div className="flex-1 relative">
+                        <Input
+                            type="text"
+                            name="message"
+                            value={messageInput}
+                            onChange={(e) => setMessageInput(e.target.value)}
+                            placeholder="Type a message..."
+                            className="w-full pl-4 pr-10 py-6 bg-muted/50 border-none focus-visible:ring-1 rounded-2xl"
+                            required
+                            autoComplete="off"
+                        />
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                            className={cn(
+                                "absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground h-8 w-8 rounded-full",
+                                showEmojiPicker && "text-primary bg-primary/10"
+                            )}
+                        >
+                            <Smile className="h-5 w-5" />
+                        </Button>
+                    </div>
+
                     <SubmitButton />
                 </form>
             </div>
@@ -241,10 +321,12 @@ function SubmitButton() {
     return (
         <Button
             type="submit"
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            size="icon"
+            className="h-12 w-12 rounded-full shrink-0 shadow-sm"
             disabled={pending}
         >
-            {pending ? "Sending..." : "Send"}
+            <Send className={cn("h-5 w-5", pending && "opacity-50")} />
+            <span className="sr-only">Send</span>
         </Button>
     );
 }

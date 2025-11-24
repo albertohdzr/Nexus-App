@@ -7,7 +7,7 @@ export default async function ChatPage() {
     const { data: { user } } = await supabase.auth.getUser();
 
     return (
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 h-full overflow-hidden">
             <ChatSidebar />
             <ChatWindow />
         </div>

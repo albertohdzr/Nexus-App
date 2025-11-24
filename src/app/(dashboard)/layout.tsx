@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { ModuleSidebar } from "@/src/components/layout/module-sidebar"
 import { SubSidebar } from "@/src/components/layout/sub-sidebar"
 import { TopNav } from "@/src/components/layout/top-nav"
+import { MainContent } from "@/src/components/layout/main-content"
 
 export default async function DashboardLayout({
     children,
@@ -47,11 +48,11 @@ export default async function DashboardLayout({
                     <TopNav organizationName={orgName} organizationLogo={orgLogo} />
                     <div className="flex flex-1 overflow-hidden">
                         <SubSidebar />
-                        <main className="flex-1 overflow-auto">
-                            <div className="@container/main flex flex-1 flex-col gap-2">
-                                <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+                        <main className="flex-1 flex flex-col overflow-hidden">
+                            <div className="@container/main flex flex-1 flex-col gap-2 overflow-hidden">
+                                <MainContent>
                                     {children}
-                                </div>
+                                </MainContent>
                             </div>
                         </main>
                     </div>
