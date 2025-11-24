@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { generateBotReply } from '@/src/lib/ai/chatbot';
+import { sendWhatsAppText } from '@/src/lib/whatsapp';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -7,6 +9,140 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!; // Use servic
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'my_secure_token';
+
+async function handleBotResponse({
+  chatId,
+  organizationId,
+  organizationName,
+  waId,
+  phoneNumberId,
+  latestUserMessage,
+}: {
+  chatId: string;
+  organizationId: string;
+  organizationName?: string | null;
+  waId: string;
+  phoneNumberId: string;
+  latestUserMessage: string;
+}) {
+  if (!process.env.WHATSAPP_ACCESS_TOKEN) {
+    console.warn("WHATSAPP_ACCESS_TOKEN missing; bot reply skipped.");
+    return;
+  }
+
+  // Stop bot replies once a handover flag exists in the thread
+  const { data: recentMessages } = await supabase
+    .from("messages")
+    .select("body, status, payload, created_at")
+    .eq("chat_id", chatId)
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  const lastHandover = (recentMessages || [])
+    .slice()
+    .reverse()
+    .find((msg) => (msg.payload as { handover?: boolean } | null)?.handover === true);
+
+  if (lastHandover) {
+    return;
+  }
+
+  const history =
+    (recentMessages || [])
+      .slice(0, -1)
+      .map((msg) => ({
+        role: msg.status === "received" ? ("user" as const) : ("assistant" as const),
+        content: msg.body || "",
+      })) || [];
+
+  const botDecision = await generateBotReply({
+    organizationName,
+    latestUserMessage,
+    history,
+  });
+
+  if (!botDecision?.reply) {
+    return;
+  }
+
+  const { messageId, error } = await sendWhatsAppText({
+    phoneNumberId,
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+    to: waId,
+    body: botDecision.reply,
+  });
+
+  if (error) {
+    console.error("WhatsApp bot send error:", error);
+    return;
+  }
+
+  const payload = {
+    from: "bot",
+    handover: botDecision.handover,
+    reason: botDecision.reason,
+    model: botDecision.model,
+  };
+
+  const { error: insertError } = await supabase.from("messages").insert({
+    chat_id: chatId,
+    wa_message_id: messageId,
+    body: botDecision.reply,
+    type: "text",
+    status: "sent",
+    sent_at: new Date().toISOString(),
+    sender_name: "Bot",
+    payload,
+    created_at: new Date().toISOString(),
+  });
+
+  if (insertError) {
+    console.error("Error saving bot reply:", insertError);
+  }
+}
+
+async function handleStatusUpdates(value: any) {
+  const statuses = value.statuses as Array<any> | undefined;
+  if (!statuses?.length) return;
+
+  for (const status of statuses) {
+    const messageId = status.id as string | undefined;
+    if (!messageId) continue;
+
+    const nextStatus = status.status as string | undefined;
+    const statusTimestamp = status.timestamp
+      ? new Date(parseInt(status.timestamp, 10) * 1000).toISOString()
+      : new Date().toISOString();
+
+    const updates: Record<string, any> = {
+      status: nextStatus,
+      payload: {
+        status_detail: status,
+      },
+    };
+
+    if (nextStatus === "sent") {
+      updates.sent_at = statusTimestamp;
+    }
+    if (nextStatus === "delivered") {
+      updates.delivered_at = statusTimestamp;
+    }
+    if (nextStatus === "read") {
+      updates.read_at = statusTimestamp;
+    }
+
+    const { error } = await supabase
+      .from("messages")
+      .update(updates)
+      .eq("wa_message_id", messageId);
+
+    if (error) {
+      console.error("Error updating message status:", error, { messageId, nextStatus });
+    } else {
+      console.log("Updated message status", { messageId, nextStatus, statusTimestamp });
+    }
+  }
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -29,73 +165,92 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log('Webhook received:', JSON.stringify(body, null, 2));
+    //console.log('Webhook received:', JSON.stringify(body, null, 2));
 
     if (body.object === 'whatsapp_business_account') {
       if (
         body.entry &&
         body.entry[0].changes &&
         body.entry[0].changes[0] &&
-        body.entry[0].changes[0].value.messages &&
-        body.entry[0].changes[0].value.messages[0]
+        body.entry[0].changes[0].value
       ) {
         const value = body.entry[0].changes[0].value;
-        const message = value.messages[0];
-        const contact = value.contacts ? value.contacts[0] : null;
+        const message = value.messages?.[0];
+        if (message) {
+          const contact = value.contacts ? value.contacts[0] : null;
 
-        const waId = contact ? contact.wa_id : message.from;
-        const name = contact ? contact.profile.name : waId;
-        const phoneNumber = value.metadata.display_phone_number;
-        const phoneNumberId = value.metadata.phone_number_id;
+          const waId = contact ? contact.wa_id : message.from;
+          const name = contact ? contact.profile.name : waId;
+          const phoneNumber = value.metadata.display_phone_number;
+          const phoneNumberId = value.metadata.phone_number_id;
 
-        // 1. Find Organization
-        const { data: orgData, error: orgError } = await supabase
-          .from('organizations')
-          .select('id')
-          .eq('phone_number_id', phoneNumberId)
-          .single();
+          // 1. Find Organization
+          const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .select('id, name')
+            .eq('phone_number_id', phoneNumberId)
+            .single();
 
-        if (orgError || !orgData) {
-          console.error('Organization not found for phone_number_id:', phoneNumberId);
-          // We might want to store it in a "unassigned" state or just log it.
-          // For now, let's return 200 to acknowledge receipt but log the error.
-          return new NextResponse('EVENT_RECEIVED', { status: 200 });
+          if (orgError || !orgData) {
+            console.error('Organization not found for phone_number_id:', phoneNumberId);
+            // Acknowledge but log
+            return new NextResponse('EVENT_RECEIVED', { status: 200 });
+          }
+
+          // 2. Upsert Chat linked to Organization
+          const { data: chatData, error: chatError } = await supabase
+            .from('chats')
+            .upsert(
+              {
+                wa_id: waId,
+                name: name,
+                phone_number: phoneNumber,
+                organization_id: orgData.id,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'wa_id' }
+            )
+            .select()
+            .single();
+
+          if (chatError) {
+            console.error('Error upserting chat:', chatError);
+            return new NextResponse('Internal Server Error', { status: 500 });
+          }
+
+          // 3. Insert Message
+          const { error: messageError } = await supabase.from('messages').insert({
+            chat_id: chatData.id,
+            wa_message_id: message.id,
+            body: message.text ? message.text.body : '[Media/Other]',
+            type: message.type,
+            status: "received",
+            payload: message,
+            wa_timestamp: message.timestamp
+              ? new Date(parseInt(message.timestamp) * 1000).toISOString()
+              : new Date().toISOString(),
+            sender_name: name,
+            created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+          });
+
+          if (messageError) {
+            console.error('Error inserting message:', messageError);
+          }
+
+          if (message.type === 'text' && message.text?.body) {
+            await handleBotResponse({
+              chatId: chatData.id,
+              organizationId: orgData.id,
+              organizationName: orgData.name,
+              waId,
+              phoneNumberId,
+              latestUserMessage: message.text.body,
+            });
+          }
         }
 
-        // 2. Upsert Chat linked to Organization
-        const { data: chatData, error: chatError } = await supabase
-          .from('chats')
-          .upsert(
-            {
-              wa_id: waId,
-              name: name,
-              phone_number: phoneNumber,
-              organization_id: orgData.id,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'wa_id' }
-          )
-          .select()
-          .single();
-
-        if (chatError) {
-          console.error('Error upserting chat:', chatError);
-          return new NextResponse('Internal Server Error', { status: 500 });
-        }
-
-        // 3. Insert Message
-        const { error: messageError } = await supabase.from('messages').insert({
-          chat_id: chatData.id,
-          wa_message_id: message.id,
-          body: message.text ? message.text.body : '[Media/Other]',
-          type: message.type,
-          payload: message,
-          created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-        });
-
-        if (messageError) {
-          console.error('Error inserting message:', messageError);
-        }
+        // Handle status updates for outgoing messages
+        await handleStatusUpdates(value);
       }
       return new NextResponse('EVENT_RECEIVED', { status: 200 });
     } else {

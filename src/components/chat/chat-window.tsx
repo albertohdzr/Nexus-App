@@ -9,6 +9,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar"
 import { cn } from "@/src/lib/utils";
 import { sendMessage } from "@/src/app/(dashboard)/chat/actions";
 import { toast } from "sonner";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 type Message = {
     id: string;
@@ -18,6 +20,17 @@ type Message = {
     status: string;
     created_at: string;
     wa_message_id: string;
+    wa_timestamp?: string | null;
+    sent_at?: string | null;
+    delivered_at?: string | null;
+    read_at?: string | null;
+    sender_name?: string | null;
+    payload?: {
+        from?: string;
+        handover?: boolean;
+        reason?: string;
+        model?: string;
+    } | null;
 };
 
 type Chat = {
@@ -72,9 +85,24 @@ export default function ChatWindow() {
             .channel(`chat_${chatId}`)
             .on(
                 "postgres_changes",
-                { event: "INSERT", schema: "public", table: "messages", filter: `chat_id=eq.${chatId}` },
+                { event: "*", schema: "public", table: "messages", filter: `chat_id=eq.${chatId}` },
                 (payload) => {
-                    setMessages((prev) => [...prev, payload.new as Message]);
+                    if (payload.eventType === "INSERT") {
+                        setMessages((prev) => [...prev, payload.new as Message]);
+                    }
+                    if (payload.eventType === "UPDATE") {
+                        setMessages((prev) =>
+                            prev
+                                .map((msg) =>
+                                    msg.id === payload.new.id ? (payload.new as Message) : msg
+                                )
+                                .sort(
+                                    (a, b) =>
+                                        new Date(a.created_at).getTime() -
+                                        new Date(b.created_at).getTime()
+                                )
+                        );
+                    }
                 }
             )
             .subscribe();
@@ -89,6 +117,8 @@ export default function ChatWindow() {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
+
+    const handoverRequested = messages.some((message) => message.payload?.handover);
 
     if (!chatId) {
         return (
@@ -112,10 +142,21 @@ export default function ChatWindow() {
                 </div>
             </div>
 
+            {handoverRequested && (
+                <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    El bot solicitó conectar con un agente. Responde aquí para tomar el caso.
+                </div>
+            )}
+
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
                 {messages.map((message) => {
                     const isReceived = message.status === 'received'; // Assuming 'received' means from user to us
+                    const isBot = message.payload?.from === "bot";
+                    const displayName =
+                        message.sender_name ||
+                        (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
+                    const displayTime = message.wa_timestamp || message.created_at;
                     // In a real app, we'd distinguish better between "my messages" and "their messages".
                     // Since we only receive messages for now, they are all "received" from the contact.
                     // If we implement sending, we'd check if the message was sent by the system or received from WA.
@@ -140,9 +181,18 @@ export default function ChatWindow() {
                                 )}
                             >
                                 <p>{message.body}</p>
-                                <span className="text-[10px] opacity-70 block text-right mt-1">
-                                    {format(new Date(message.created_at), "HH:mm")}
-                                </span>
+                                <div className="mt-2 flex items-center justify-between gap-2 text-[10px] opacity-80">
+                                    <span>
+                                        {displayName}
+                                        {message.payload?.handover ? " · Escalada a agente" : ""}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        {!isReceived && message.status && (
+                                            <span className="capitalize">{message.status}</span>
+                                        )}
+                                        {format(new Date(displayTime), "HH:mm")}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     );
@@ -171,7 +221,7 @@ export default function ChatWindow() {
                     id="message-form"
                     className="flex gap-2"
                 >
-                    <input
+                    <Input
                         type="text"
                         name="message"
                         placeholder="Type a message..."
@@ -189,12 +239,12 @@ function SubmitButton() {
     const { pending } = useFormStatus();
 
     return (
-        <button
+        <Button
             type="submit"
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={pending}
         >
             {pending ? "Sending..." : "Send"}
-        </button>
+        </Button>
     );
 }

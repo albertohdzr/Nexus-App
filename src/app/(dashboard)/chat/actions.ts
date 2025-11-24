@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/src/lib/supabase/server";
+import { sendWhatsAppText } from "@/src/lib/whatsapp";
 import { revalidatePath } from "next/cache";
 
 export async function sendMessage(formData: FormData) {
@@ -46,6 +47,12 @@ export async function sendMessage(formData: FormData) {
     return { error: "Organization WhatsApp not configured" };
   }
 
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("first_name, last_name")
+    .eq("id", user.id)
+    .single();
+
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!accessToken) {
     return { error: "System WhatsApp Access Token not configured" };
@@ -53,51 +60,28 @@ export async function sendMessage(formData: FormData) {
 
   // 3. Call WhatsApp Graph API
   try {
-    // Fix Mexican phone numbers: remove extra "1" if number starts with 521
-    let recipientNumber = chat.wa_id;
-    if (recipientNumber.startsWith("521")) {
-      recipientNumber = "52" + recipientNumber.slice(3);
+    const { messageId, error } = await sendWhatsAppText({
+      phoneNumberId: org.phone_number_id,
+      accessToken,
+      to: chat.wa_id,
+      body: messageBody,
+    });
+
+    if (error) {
+      console.error("WhatsApp API Error:", error);
+      return { error: `WhatsApp API Error: ${error}` };
     }
-    
-    const body = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to: recipientNumber,
-      type: "text",
-      text: {
-        preview_url: false,
-        body: messageBody,
-      },
-    };
-    console.log("Body:", body);
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/${org.phone_number_id}/messages`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("WhatsApp API Error:", data);
-      return { error: `WhatsApp API Error: ${data.error?.message || "Unknown error"}` };
-    }
-
-    const waMessageId = data.messages?.[0]?.id;
 
     // 4. Store Message in DB
     const { error: insertError } = await supabase.from("messages").insert({
       chat_id: chatId,
-      wa_message_id: waMessageId,
+      wa_message_id: messageId,
       body: messageBody,
       type: "text",
       status: "sent", // Optimistic status
+      sent_at: new Date().toISOString(),
+      sender_profile_id: user.id,
+      sender_name: profile ? `${profile.first_name} ${profile.last_name}` : null,
       created_at: new Date().toISOString(),
     });
 
