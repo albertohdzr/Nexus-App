@@ -9,24 +9,24 @@ import {
     FileText,
     Calendar,
     PieChart,
-    UserPlus,
     Building2,
     Shield,
 } from "lucide-react"
+import { type ComponentType } from "react"
 
 export type UserRole = 'superadmin' | 'org_admin' | 'director' | 'admissions' | 'teacher' | 'finance' | 'staff' | 'parent' | 'student'
 
 export interface NavItem {
     title: string
     href: string
-    icon?: any
+    icon?: ComponentType<{ className?: string }>
     roles?: UserRole[] // If undefined, accessible by all authenticated users (or handled by parent)
 }
 
 export interface ModuleConfig {
     key: string
     title: string
-    icon: any
+    icon: ComponentType<{ className?: string }>
     href: string // Landing page for the module
     roles?: UserRole[]
     subNavigation: NavItem[]

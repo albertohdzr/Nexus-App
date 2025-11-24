@@ -4,6 +4,31 @@ import { generateBotReply } from '@/src/lib/ai/chatbot';
 import { sendWhatsAppText } from '@/src/lib/whatsapp';
 import { uploadToStorage } from '@/src/lib/storage';
 
+type WhatsAppStatus = {
+  id?: string;
+  status?: string;
+  timestamp?: string;
+  [key: string]: unknown;
+};
+
+type WhatsAppMessage = {
+  id: string;
+  timestamp: string;
+  type: string;
+  from?: string;
+  text?: { body?: string };
+  image?: { id: string; mime_type?: string; caption?: string };
+  document?: { id: string; mime_type?: string; filename?: string; sha256?: string };
+  [key: string]: unknown;
+};
+
+type WhatsAppValue = {
+  messages?: WhatsAppMessage[];
+  statuses?: WhatsAppStatus[];
+  contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
+  metadata: { display_phone_number: string; phone_number_id: string };
+};
+
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!; // Use service role key for backend operations
@@ -13,14 +38,12 @@ const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'my_secure_token';
 
 async function handleBotResponse({
   chatId,
-  organizationId,
   organizationName,
   waId,
   phoneNumberId,
   latestUserMessage,
 }: {
   chatId: string;
-  organizationId: string;
   organizationName?: string | null;
   waId: string;
   phoneNumberId: string;
@@ -102,8 +125,8 @@ async function handleBotResponse({
   }
 }
 
-async function handleStatusUpdates(value: any) {
-  const statuses = value.statuses as Array<any> | undefined;
+async function handleStatusUpdates(value: WhatsAppValue) {
+  const statuses = value.statuses;
   if (!statuses?.length) return;
 
   for (const status of statuses) {
@@ -115,7 +138,7 @@ async function handleStatusUpdates(value: any) {
       ? new Date(parseInt(status.timestamp, 10) * 1000).toISOString()
       : new Date().toISOString();
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       status: nextStatus,
       payload: {
         status_detail: status,
@@ -175,15 +198,20 @@ export async function POST(request: Request) {
             body.entry[0].changes[0] &&
             body.entry[0].changes[0].value
           ) {
-            const value = body.entry[0].changes[0].value;
+            const value = body.entry[0].changes[0].value as WhatsAppValue;
         const message = value.messages?.[0];
         if (message) {
           const contact = value.contacts ? value.contacts[0] : null;
 
-          const waId = contact ? contact.wa_id : message.from;
-          const name = contact ? contact.profile.name : waId;
+          const waId = contact?.wa_id ?? message.from ?? "";
+          const name = contact?.profile?.name ?? waId;
           const phoneNumber = value.metadata.display_phone_number;
           const phoneNumberId = value.metadata.phone_number_id;
+
+          if (!waId) {
+            console.error("Missing waId in incoming message");
+            return new NextResponse('EVENT_RECEIVED', { status: 200 });
+          }
 
           // 1. Find Organization
           const { data: orgData, error: orgError } = await supabase
@@ -222,14 +250,14 @@ export async function POST(request: Request) {
           let mediaUrl: string | undefined;
           let mediaPath: string | undefined;
           const isImage = message.type === "image" && message.image?.id;
-          const isDocument = message.type === "document" && (message as any).document?.id;
-          const mediaId = isImage ? message.image?.id : isDocument ? (message as any).document?.id : undefined;
+          const isDocument = message.type === "document" && message.document?.id;
+          const mediaId = isImage ? message.image?.id : isDocument ? message.document?.id : undefined;
           const mediaMime = isImage
             ? message.image?.mime_type
             : isDocument
-            ? (message as any).document?.mime_type
+            ? message.document?.mime_type
             : undefined;
-          const mediaFileName = isDocument ? (message as any).document?.filename : undefined;
+          const mediaFileName = isDocument ? message.document?.filename : undefined;
           const mediaCaption = isImage ? message.image?.caption : undefined;
 
           // If it's media (image or document), try to download and store in Supabase
@@ -279,7 +307,7 @@ export async function POST(request: Request) {
           const messageBody =
             message.text?.body ||
             message.image?.caption ||
-            (message as any).document?.filename ||
+            message.document?.filename ||
             "[Media/Other]";
 
           // 3. Insert Message
@@ -313,7 +341,6 @@ export async function POST(request: Request) {
           if (message.type === 'text' && message.text?.body) {
             await handleBotResponse({
               chatId: chatData.id,
-              organizationId: orgData.id,
               organizationName: orgData.name,
               waId,
               phoneNumberId,

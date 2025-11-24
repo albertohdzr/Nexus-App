@@ -27,7 +27,7 @@ export type Message = {
   status: string;
   created_at: string;
   wa_message_id: string;
-  payload?: any;
+  payload?: Record<string, unknown>;
 };
 
 export type UserProfile = {

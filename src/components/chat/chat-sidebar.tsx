@@ -40,7 +40,7 @@ export default function ChatSidebar() {
                 .single();
 
             if (profile?.organization_id) {
-                const { data, error } = await supabase
+                const { data } = await supabase
                     .from("chats")
                     .select("*")
                     .eq("organization_id", profile.organization_id)

@@ -3,6 +3,7 @@
 import { createClient } from "@/src/lib/supabase/server"
 import { Resend } from "resend"
 import { redirect } from "next/navigation"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -54,12 +55,6 @@ export async function createOrganizationAction(formData: FormData) {
   console.log("Org created:", org.id)
 
   // 2. Create Admin User (using service role client for admin actions)
-  // We need a service role client to create users without logging them in immediately
-  // However, `createClient` from `server.ts` uses the user's session.
-  // We need to construct a service role client here manually or export a helper.
-  // For now, let's use the `supabase-js` library directly with the service role key.
-  
-  const { createClient: createSupabaseClient } = require('@supabase/supabase-js')
   const supabaseAdmin = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,

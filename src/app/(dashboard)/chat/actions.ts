@@ -81,7 +81,7 @@ export async function sendMessage(formData: FormData) {
 
   const createdAt = new Date().toISOString();
   let waMessageId: string | undefined;
-  let payload: Record<string, any> | undefined;
+  let payload: Record<string, unknown> | undefined;
   let type: "text" | "image" | "document" = "text";
   let bodyToStore = messageBody;
   let mediaId: string | undefined;

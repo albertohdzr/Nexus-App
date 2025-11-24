@@ -1,13 +1,11 @@
 
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/src/lib/utils"
-import { navigationModules, superAdminModules, ModuleConfig } from "@/src/config/navigation"
+import { navigationModules, superAdminModules, UserRole } from "@/src/config/navigation"
 import { useUser } from "@/src/components/providers/auth-provider"
-import { Separator } from "@/src/components/ui/separator"
 
 export function SubSidebar() {
     const pathname = usePathname()
@@ -25,7 +23,7 @@ export function SubSidebar() {
     }
 
     // Filter sub-navigation based on role
-    const subNav = activeModule.subNavigation.filter(item => !item.roles || item.roles.includes(role as any))
+    const subNav = activeModule.subNavigation.filter(item => !item.roles || (role ? item.roles.includes(role as UserRole) : true))
 
     return (
         <div className="flex flex-col h-full w-64 border-r bg-card">

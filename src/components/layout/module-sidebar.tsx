@@ -5,7 +5,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/src/lib/utils"
-import { navigationModules, superAdminModules, ModuleConfig } from "@/src/config/navigation"
+import { navigationModules, superAdminModules, type UserRole } from "@/src/config/navigation"
 import { useUser } from "@/src/components/providers/auth-provider"
 import {
     Tooltip,
@@ -23,7 +23,7 @@ export function ModuleSidebar() {
     // For now, let's append superadmin modules if the user is a superadmin
     const modules = role === 'superadmin'
         ? [...superAdminModules, ...navigationModules]
-        : navigationModules.filter(m => !m.roles || m.roles.includes(role as any))
+        : navigationModules.filter(m => !m.roles || (role ? m.roles.includes(role as UserRole) : true))
 
     return (
         <div className="flex flex-col h-full w-16 border-r bg-card items-center py-3 gap-2">

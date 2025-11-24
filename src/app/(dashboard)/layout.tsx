@@ -35,9 +35,9 @@ export default async function DashboardLayout({
         .single()
 
     const role = profile?.role || null
-    // @ts-ignore - Supabase types might be tricky with joins, but this is valid
+    // @ts-expect-error Supabase join typing for organization is not generated
     const orgName = profile?.organization?.name || "Nexus"
-    // @ts-ignore
+    // @ts-expect-error Supabase join typing for organization is not generated
     const orgLogo = profile?.organization?.logo_url || null
 
     return (

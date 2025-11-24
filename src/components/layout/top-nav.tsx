@@ -57,7 +57,7 @@ export function TopNav({ organizationName, organizationLogo }: TopNavProps) {
                 {/* Breadcrumbs */}
                 <Breadcrumb className="hidden md:flex">
                     <BreadcrumbList>
-                        {breadcrumbs.map((crumb, index) => (
+                        {breadcrumbs.map((crumb) => (
                             <Fragment key={crumb.href}>
                                 <BreadcrumbItem>
                                     {crumb.isLast ? (

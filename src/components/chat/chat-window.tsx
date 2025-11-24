@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { MoreVertical, Phone, Video, Paperclip, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download } from "lucide-react";
+import { MoreVertical, Phone, Video, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download } from "lucide-react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 type Message = {
@@ -31,12 +31,19 @@ type Message = {
     media_id?: string | null;
     media_url?: string | null;
     media_path?: string | null;
-    payload?: {
-        from?: string;
-        handover?: boolean;
-        reason?: string;
-        model?: string;
-    } | null;
+    payload?: MessagePayload | null;
+};
+
+type MessagePayload = {
+    from?: string;
+    handover?: boolean;
+    reason?: string;
+    model?: string;
+    media_id?: string;
+    media_mime_type?: string;
+    media_file_name?: string;
+    media_caption?: string;
+    status_detail?: unknown;
 };
 
 type Chat = {
@@ -101,6 +108,7 @@ export default function ChatWindow() {
 
     useEffect(() => {
         if (!chatId) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setMessages([]);
             setChat(null);
             return;
@@ -275,14 +283,15 @@ export default function ChatWindow() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 z-0" ref={scrollRef}>
-                {messages.map((message, index) => {
+                {messages.map((message) => {
                     const isReceived = message.status === 'received';
                     const isBot = message.payload?.from === "bot";
                     const displayTime = message.wa_timestamp || message.created_at;
-                    const mediaId = message.media_id || (message.payload as any)?.media_id;
+                    const mediaId = message.media_id || message.payload?.media_id;
                     const mediaUrl = message.media_url || (message.media_path ? `/api/storage/media?path=${encodeURIComponent(message.media_path)}` : undefined);
-                    const isImageMessage = message.type === "image" || Boolean(mediaId && (message.payload as any)?.media_mime_type?.startsWith?.("image/"));
-                    const isDocumentMessage = message.type === "document" || ((message.payload as any)?.media_mime_type && !(message.payload as any)?.media_mime_type?.startsWith?.("image/"));
+                    const mediaMime = message.payload?.media_mime_type;
+                    const isImageMessage = message.type === "image" || Boolean(mediaId && mediaMime?.startsWith?.("image/"));
+                    const isDocumentMessage = message.type === "document" || (mediaMime ? !mediaMime.startsWith("image/") : false);
                     const displayName =
                         message.sender_name ||
                         (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
@@ -324,9 +333,9 @@ export default function ChatWindow() {
                                                 {message.body}
                                             </p>
                                         )}
-                                        {(message.payload as any)?.media_file_name && (
+                                        {message.payload?.media_file_name && (
                                             <p className="text-[11px] opacity-80">
-                                                {(message.payload as any)?.media_file_name}
+                                                {message.payload.media_file_name}
                                             </p>
                                         )}
                                     </div>
@@ -343,7 +352,7 @@ export default function ChatWindow() {
                                                 {message.body}
                                             </p>
                                         )}
-                                        {mediaUrl && (message.payload as any)?.media_mime_type === "application/pdf" && (
+                                        {mediaUrl && mediaMime === "application/pdf" && (
                                             <div className="border rounded-lg overflow-hidden">
                                                 <iframe
                                                     src={mediaUrl}
@@ -365,9 +374,9 @@ export default function ChatWindow() {
                                                 </a>
                                             </Button>
                                         )}
-                                        {(message.payload as any)?.media_file_name && (
+                                        {message.payload?.media_file_name && (
                                             <p className="text-[11px] opacity-80">
-                                                {(message.payload as any)?.media_file_name}
+                                                {message.payload.media_file_name}
                                             </p>
                                         )}
                                     </div>

@@ -25,13 +25,14 @@ import { Laptop, Moon, Sun, LogOut, User, Settings } from "lucide-react"
 import { useTheme } from "next-themes"
 
 export function UserNav() {
-    const { user, role } = useUser()
+    const { user } = useUser()
     const router = useRouter()
     const supabase = createClient()
     const { setTheme } = useTheme()
     const [mounted, setMounted] = useState(false)
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true)
     }, [])
 
