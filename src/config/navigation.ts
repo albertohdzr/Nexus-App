@@ -11,7 +11,7 @@ import {
     PieChart,
     UserPlus,
     Building2,
-    Shield
+    Shield,
 } from "lucide-react"
 
 export type UserRole = 'superadmin' | 'org_admin' | 'director' | 'admissions' | 'teacher' | 'finance' | 'staff' | 'parent' | 'student'
