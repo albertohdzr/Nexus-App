@@ -166,7 +166,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    //console.log('Webhook received:', JSON.stringify(body, null, 2));
+    console.log('Webhook received:', JSON.stringify(body, null, 2));
 
         if (body.object === 'whatsapp_business_account') {
           if (
@@ -221,19 +221,22 @@ export async function POST(request: Request) {
 
           let mediaUrl: string | undefined;
           let mediaPath: string | undefined;
-          const mediaInfo = message.image
-            ? {
-                media_id: message.image.id,
-                media_mime_type: message.image.mime_type,
-                media_caption: message.image.caption,
-              }
+          const isImage = message.type === "image" && message.image?.id;
+          const isDocument = message.type === "document" && (message as any).document?.id;
+          const mediaId = isImage ? message.image?.id : isDocument ? (message as any).document?.id : undefined;
+          const mediaMime = isImage
+            ? message.image?.mime_type
+            : isDocument
+            ? (message as any).document?.mime_type
             : undefined;
+          const mediaFileName = isDocument ? (message as any).document?.filename : undefined;
+          const mediaCaption = isImage ? message.image?.caption : undefined;
 
-          // If it's an image, try to download and store in Supabase
-          if (message.image?.id) {
+          // If it's media (image or document), try to download and store in Supabase
+          if (mediaId) {
             try {
               const metaResponse = await fetch(
-                `https://graph.facebook.com/v21.0/${message.image.id}`,
+                `https://graph.facebook.com/v21.0/${mediaId}`,
                 {
                   headers: {
                     Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
@@ -253,7 +256,7 @@ export async function POST(request: Request) {
                   });
                   if (mediaResponse.ok) {
                     const arrayBuffer = await mediaResponse.arrayBuffer();
-                    const storagePath = `chats/${chatData.id}/${message.image.id}`;
+                    const storagePath = `chats/${chatData.id}/${mediaId}-${mediaFileName || "file"}`;
                     const { path: storedPath, error: storageError } = await uploadToStorage({
                       file: Buffer.from(arrayBuffer),
                       path: storagePath,
@@ -276,6 +279,7 @@ export async function POST(request: Request) {
           const messageBody =
             message.text?.body ||
             message.image?.caption ||
+            (message as any).document?.filename ||
             "[Media/Other]";
 
           // 3. Insert Message
@@ -287,13 +291,16 @@ export async function POST(request: Request) {
             status: "received",
             payload: {
               ...message,
-              ...mediaInfo,
+              media_id: mediaId,
+              media_mime_type: mediaMime,
+              media_file_name: mediaFileName,
+              media_caption: mediaCaption,
             },
             wa_timestamp: message.timestamp
               ? new Date(parseInt(message.timestamp) * 1000).toISOString()
               : new Date().toISOString(),
             sender_name: name,
-            media_id: message.image?.id,
+            media_id: mediaId,
             media_path: mediaPath,
             media_url: mediaUrl,
             created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),

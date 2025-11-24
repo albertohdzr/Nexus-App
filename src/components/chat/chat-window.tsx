@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { MoreVertical, Phone, Video, Paperclip, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X } from "lucide-react";
+import { MoreVertical, Phone, Video, Paperclip, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download } from "lucide-react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 type Message = {
@@ -48,6 +48,17 @@ type Chat = {
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];
+const ALLOWED_DOC_TYPES = [
+    "text/plain",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/pdf",
+];
+const MAX_DOC_BYTES = 100 * 1024 * 1024; // 100 MB
 
 export default function ChatWindow() {
     const [messages, setMessages] = useState<Message[]>([]);
@@ -66,18 +77,24 @@ export default function ChatWindow() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileSelection = (file: File) => {
-        if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-            toast.error("Solo se permiten imágenes JPEG o PNG");
+        const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+        const isDoc = ALLOWED_DOC_TYPES.includes(file.type);
+        if (!isImage && !isDoc) {
+            toast.error("Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT o imagen JPEG/PNG.");
             return;
         }
-        if (file.size > MAX_IMAGE_BYTES) {
+        if (isImage && file.size > MAX_IMAGE_BYTES) {
             toast.error("La imagen debe pesar máximo 5 MB");
+            return;
+        }
+        if (isDoc && file.size > MAX_DOC_BYTES) {
+            toast.error("El archivo debe pesar máximo 100 MB");
             return;
         }
         if (attachmentPreview) {
             URL.revokeObjectURL(attachmentPreview);
         }
-        const previewUrl = URL.createObjectURL(file);
+        const previewUrl = isImage || file.type === "application/pdf" ? URL.createObjectURL(file) : null;
         setAttachment(file);
         setAttachmentPreview(previewUrl);
     };
@@ -264,7 +281,8 @@ export default function ChatWindow() {
                     const displayTime = message.wa_timestamp || message.created_at;
                     const mediaId = message.media_id || (message.payload as any)?.media_id;
                     const mediaUrl = message.media_url || (message.media_path ? `/api/storage/media?path=${encodeURIComponent(message.media_path)}` : undefined);
-                    const isImageMessage = message.type === "image" || Boolean(mediaId);
+                    const isImageMessage = message.type === "image" || Boolean(mediaId && (message.payload as any)?.media_mime_type?.startsWith?.("image/"));
+                    const isDocumentMessage = message.type === "document" || ((message.payload as any)?.media_mime_type && !(message.payload as any)?.media_mime_type?.startsWith?.("image/"));
                     const displayName =
                         message.sender_name ||
                         (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
@@ -305,6 +323,47 @@ export default function ChatWindow() {
                                             <p className="text-sm leading-relaxed whitespace-pre-wrap">
                                                 {message.body}
                                             </p>
+                                        )}
+                                        {(message.payload as any)?.media_file_name && (
+                                            <p className="text-[11px] opacity-80">
+                                                {(message.payload as any)?.media_file_name}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : isDocumentMessage ? (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-xs font-semibold">
+                                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-background/60 text-muted-foreground">
+                                                <FileText className="h-4 w-4" />
+                                            </span>
+                                            <span>Documento</span>
+                                        </div>
+                                        {message.body && (
+                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                                {message.body}
+                                            </p>
+                                        )}
+                                        {mediaUrl && (message.payload as any)?.media_mime_type === "application/pdf" && (
+                                            <div className="border rounded-lg overflow-hidden">
+                                                <iframe
+                                                    src={mediaUrl}
+                                                    className="w-full h-64"
+                                                    title={message.body || "PDF"}
+                                                />
+                                            </div>
+                                        )}
+                                        {mediaUrl && (
+                                            <Button
+                                                asChild
+                                                variant="outline"
+                                                size="sm"
+                                                className="inline-flex items-center gap-2"
+                                            >
+                                                <a href={mediaUrl} target="_blank" rel="noreferrer" download>
+                                                    <Download className="h-4 w-4" />
+                                                    Descargar
+                                                </a>
+                                            </Button>
                                         )}
                                         {(message.payload as any)?.media_file_name && (
                                             <p className="text-[11px] opacity-80">
@@ -371,13 +430,17 @@ export default function ChatWindow() {
 
                 {attachment && (
                     <div className="max-w-4xl mx-auto mb-3 rounded-2xl border bg-muted/40 p-3 flex gap-3 items-start">
-                        <div className="relative h-16 w-16 overflow-hidden rounded-xl border bg-background">
-                            {attachmentPreview ? (
+                        <div className="relative h-16 w-16 overflow-hidden rounded-xl border bg-background flex items-center justify-center">
+                            {attachment.type === "application/pdf" && attachmentPreview ? (
+                                <div className="text-muted-foreground">
+                                    <FileText className="h-6 w-6" />
+                                </div>
+                            ) : attachmentPreview ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img src={attachmentPreview} alt={attachment.name} className="h-full w-full object-cover" />
                             ) : (
                                 <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                                    <ImageIcon className="h-6 w-6" />
+                                    {ALLOWED_IMAGE_TYPES.includes(attachment.type) ? <ImageIcon className="h-6 w-6" /> : <FileText className="h-6 w-6" />}
                                 </div>
                             )}
                         </div>
@@ -455,14 +518,17 @@ export default function ChatWindow() {
                                     onClick={() => fileInputRef.current?.click()}
                                 >
                                     <ImageIcon className="h-4 w-4" />
-                                    Agregar imagen
+                                    Agregar archivo
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/png,image/jpeg"
+                            accept={[
+                                ...ALLOWED_IMAGE_TYPES,
+                                ...ALLOWED_DOC_TYPES,
+                            ].join(",")}
                             className="hidden"
                             onChange={(e) => {
                                 const file = e.target.files?.[0];
