@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useFormStatus } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { createClient } from "@/src/lib/supabase/client";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar";
 import { cn } from "@/src/lib/utils";
+import { sendMessage } from "@/src/app/(dashboard)/chat/actions";
+import { toast } from "sonner";
 
 type Message = {
     id: string;
@@ -146,26 +149,52 @@ export default function ChatWindow() {
                 })}
             </div>
 
-            {/* Input Area (Placeholder) */}
+            {/* Input Area */}
             <div className="p-4 bg-background border-t">
-                <div className="flex gap-2">
+                <form
+                    action={async (formData) => {
+                        if (!chatId) return;
+                        formData.append("chatId", chatId);
+
+                        // Optimistic update could go here if we were using useOptimistic
+                        // For now, we rely on the server action + revalidatePath + realtime subscription
+
+                        const result = await sendMessage(formData);
+                        if (result.error) {
+                            toast.error(result.error);
+                        } else {
+                            // Clear input (simple way)
+                            const form = document.getElementById("message-form") as HTMLFormElement;
+                            form?.reset();
+                        }
+                    }}
+                    id="message-form"
+                    className="flex gap-2"
+                >
                     <input
                         type="text"
+                        name="message"
                         placeholder="Type a message..."
                         className="flex-1 p-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        disabled
+                        required
                     />
-                    <button
-                        className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium opacity-50 cursor-not-allowed"
-                        disabled
-                    >
-                        Send
-                    </button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                    Sending messages is not yet configured.
-                </p>
+                    <SubmitButton />
+                </form>
             </div>
         </div>
+    );
+}
+
+function SubmitButton() {
+    const { pending } = useFormStatus();
+
+    return (
+        <button
+            type="submit"
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={pending}
+        >
+            {pending ? "Sending..." : "Send"}
+        </button>
     );
 }
