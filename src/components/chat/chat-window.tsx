@@ -11,7 +11,8 @@ import { sendMessage } from "@/src/app/(dashboard)/chat/actions";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { MoreVertical, Phone, Video, Paperclip, Smile, Send, Check, CheckCheck, Plus } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { MoreVertical, Phone, Video, Paperclip, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X } from "lucide-react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 
 type Message = {
@@ -42,16 +43,41 @@ type Chat = {
     wa_id: string;
 };
 
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];
+
 export default function ChatWindow() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [chat, setChat] = useState<Chat | null>(null);
     const [messageInput, setMessageInput] = useState("");
+    const [captionInput, setCaptionInput] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    const [attachment, setAttachment] = useState<File | null>(null);
+    const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
     const supabase = createClient();
     const searchParams = useSearchParams();
     const chatId = searchParams.get("chatId");
     const scrollRef = useRef<HTMLDivElement>(null);
     const pickerRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileSelection = (file: File) => {
+        if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+            toast.error("Solo se permiten imágenes JPEG o PNG");
+            return;
+        }
+        if (file.size > MAX_IMAGE_BYTES) {
+            toast.error("La imagen debe pesar máximo 5 MB");
+            return;
+        }
+        if (attachmentPreview) {
+            URL.revokeObjectURL(attachmentPreview);
+        }
+        const previewUrl = URL.createObjectURL(file);
+        setAttachment(file);
+        setAttachmentPreview(previewUrl);
+    };
 
     useEffect(() => {
         if (!chatId) {
@@ -141,7 +167,16 @@ export default function ChatWindow() {
         }
     }, [messages]);
 
+    useEffect(() => {
+        return () => {
+            if (attachmentPreview) {
+                URL.revokeObjectURL(attachmentPreview);
+            }
+        };
+    }, [attachmentPreview]);
+
     const handoverRequested = messages.some((message) => message.payload?.handover);
+    const canSend = Boolean(messageInput.trim() || captionInput.trim() || attachment);
 
     const onEmojiClick = (emojiData: EmojiClickData) => {
         setMessageInput((prev) => prev + emojiData.emoji);
@@ -160,7 +195,22 @@ export default function ChatWindow() {
     }
 
     return (
-        <div className="flex-1 flex flex-col h-full bg-muted/10 relative">
+        <div
+            className="flex-1 flex flex-col h-full bg-muted/10 relative"
+            onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) {
+                    handleFileSelection(file);
+                }
+            }}
+        >
             {/* Background Pattern */}
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
                 style={{
@@ -209,9 +259,10 @@ export default function ChatWindow() {
                     const isReceived = message.status === 'received';
                     const isBot = message.payload?.from === "bot";
                     const displayTime = message.wa_timestamp || message.created_at;
-
-                    // Grouping logic could go here (check previous message sender)
-                    const isFirstInGroup = index === 0 || messages[index - 1].status !== message.status;
+                    const isImageMessage = message.type === "image" || Boolean((message.payload as any)?.media_id);
+                    const displayName =
+                        message.sender_name ||
+                        (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
 
                     return (
                         <div
@@ -229,12 +280,33 @@ export default function ChatWindow() {
                                         : "bg-primary text-primary-foreground rounded-2xl rounded-tr-none"
                                 )}
                             >
-                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.body}</p>
+                                {isImageMessage ? (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-xs font-semibold">
+                                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-background/60 text-muted-foreground">
+                                                <ImageIcon className="h-4 w-4" />
+                                            </span>
+                                            <span>Imagen</span>
+                                        </div>
+                                        {message.body && (
+                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                                                {message.body}
+                                            </p>
+                                        )}
+                                        {(message.payload as any)?.media_file_name && (
+                                            <p className="text-[11px] opacity-80">
+                                                {(message.payload as any)?.media_file_name}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.body}</p>
+                                )}
                                 <div className={cn(
                                     "mt-1 flex items-center gap-1 text-[10px]",
                                     isReceived ? "text-muted-foreground justify-end" : "text-primary-foreground/70 justify-end"
                                 )}>
-                                    <span>{format(new Date(displayTime), "HH:mm")}</span>
+                                    <span>{displayName} · {format(new Date(displayTime), "HH:mm")}</span>
                                     {!isReceived && (
                                         <span>
                                             {message.status === 'read' ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />}
@@ -248,7 +320,25 @@ export default function ChatWindow() {
             </div>
 
             {/* Input Area */}
-            <div className="p-4 bg-background/80 backdrop-blur-sm border-t z-10 relative">
+            <div
+                className="p-4 bg-background/80 backdrop-blur-sm border-t z-10 relative"
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                }}
+                onDragLeave={(e) => {
+                    if ((e.target as HTMLElement).closest(".drop-zone")) return;
+                    setIsDragging(false);
+                }}
+                onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                        handleFileSelection(file);
+                    }
+                }}
+            >
                 {showEmojiPicker && (
                     <div ref={pickerRef} className="absolute bottom-full right-4 mb-2 z-50 shadow-xl rounded-xl border bg-background">
                         <EmojiPicker
@@ -259,18 +349,81 @@ export default function ChatWindow() {
                         />
                     </div>
                 )}
+
+                {isDragging && (
+                    <div className="absolute inset-0 z-40 flex items-center justify-center rounded-xl border-2 border-dashed border-primary/70 bg-primary/5 drop-zone">
+                        <div className="text-primary font-medium">Suelta la imagen para adjuntarla</div>
+                    </div>
+                )}
+
+                {attachment && (
+                    <div className="max-w-4xl mx-auto mb-3 rounded-2xl border bg-muted/40 p-3 flex gap-3 items-start">
+                        <div className="relative h-16 w-16 overflow-hidden rounded-xl border bg-background">
+                            {attachmentPreview ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={attachmentPreview} alt={attachment.name} className="h-full w-full object-cover" />
+                            ) : (
+                                <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                                    <ImageIcon className="h-6 w-6" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex-1 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-medium truncate">{attachment.name}</div>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        Cambiar
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => {
+                                            setAttachment(null);
+                                            setAttachmentPreview(null);
+                                            setCaptionInput("");
+                                        }}
+                                    >
+                                        <X className="h-4 w-4" />
+                                        <span className="sr-only">Eliminar adjunto</span>
+                                    </Button>
+                                </div>
+                            </div>
+                            <Input
+                                name="caption"
+                                value={captionInput}
+                                onChange={(e) => setCaptionInput(e.target.value)}
+                                placeholder="Añade un caption (opcional)"
+                            />
+                        </div>
+                    </div>
+                )}
+
                 <form
                     action={async (formData) => {
                         if (!chatId) return;
                         formData.append("chatId", chatId);
                         // Ensure the message from state is sent if the input is controlled
                         formData.set("message", messageInput);
+                        formData.set("caption", captionInput);
+                        if (attachment) {
+                            formData.set("media", attachment);
+                        }
 
                         const result = await sendMessage(formData);
                         if (result.error) {
                             toast.error(result.error);
                         } else {
                             setMessageInput("");
+                            setCaptionInput("");
+                            setAttachment(null);
+                            setAttachmentPreview(null);
                             setShowEmojiPicker(false);
                         }
                     }}
@@ -278,9 +431,31 @@ export default function ChatWindow() {
                     className="flex items-end gap-2 max-w-4xl mx-auto"
                 >
                     <div className="flex gap-1 mb-1">
-                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full">
-                            <Plus className="h-5 w-5" />
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full">
+                                    <Plus className="h-5 w-5" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                                <DropdownMenuItem
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    <ImageIcon className="h-4 w-4" />
+                                    Agregar imagen
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg"
+                            className="hidden"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFileSelection(file);
+                            }}
+                        />
                     </div>
 
                     <div className="flex-1 relative">
@@ -291,7 +466,7 @@ export default function ChatWindow() {
                             onChange={(e) => setMessageInput(e.target.value)}
                             placeholder="Type a message..."
                             className="w-full pl-4 pr-10 py-6 bg-muted/50 border-none focus-visible:ring-1 rounded-2xl"
-                            required
+                            required={!attachment}
                             autoComplete="off"
                         />
                         <Button
@@ -308,14 +483,14 @@ export default function ChatWindow() {
                         </Button>
                     </div>
 
-                    <SubmitButton />
+                    <SubmitButton disabled={!canSend} />
                 </form>
             </div>
         </div>
     );
 }
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled?: boolean }) {
     const { pending } = useFormStatus();
 
     return (
@@ -323,7 +498,7 @@ function SubmitButton() {
             type="submit"
             size="icon"
             className="h-12 w-12 rounded-full shrink-0 shadow-sm"
-            disabled={pending}
+            disabled={pending || disabled}
         >
             <Send className={cn("h-5 w-5", pending && "opacity-50")} />
             <span className="sr-only">Send</span>

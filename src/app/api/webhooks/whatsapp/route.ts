@@ -167,16 +167,16 @@ export async function POST(request: Request) {
     const body = await request.json();
     //console.log('Webhook received:', JSON.stringify(body, null, 2));
 
-    if (body.object === 'whatsapp_business_account') {
-      if (
-        body.entry &&
-        body.entry[0].changes &&
-        body.entry[0].changes[0] &&
-        body.entry[0].changes[0].value
-      ) {
-        const value = body.entry[0].changes[0].value;
-        const message = value.messages?.[0];
-        if (message) {
+        if (body.object === 'whatsapp_business_account') {
+          if (
+            body.entry &&
+            body.entry[0].changes &&
+            body.entry[0].changes[0] &&
+            body.entry[0].changes[0].value
+          ) {
+            const value = body.entry[0].changes[0].value;
+            const message = value.messages?.[0];
+            if (message) {
           const contact = value.contacts ? value.contacts[0] : null;
 
           const waId = contact ? contact.wa_id : message.from;
@@ -218,14 +218,30 @@ export async function POST(request: Request) {
             return new NextResponse('Internal Server Error', { status: 500 });
           }
 
+          const mediaInfo = message.image
+            ? {
+                media_id: message.image.id,
+                media_mime_type: message.image.mime_type,
+                media_caption: message.image.caption,
+              }
+            : undefined;
+
+          const messageBody =
+            message.text?.body ||
+            message.image?.caption ||
+            "[Media/Other]";
+
           // 3. Insert Message
           const { error: messageError } = await supabase.from('messages').insert({
             chat_id: chatData.id,
             wa_message_id: message.id,
-            body: message.text ? message.text.body : '[Media/Other]',
+            body: messageBody,
             type: message.type,
             status: "received",
-            payload: message,
+            payload: {
+              ...message,
+              ...mediaInfo,
+            },
             wa_timestamp: message.timestamp
               ? new Date(parseInt(message.timestamp) * 1000).toISOString()
               : new Date().toISOString(),
