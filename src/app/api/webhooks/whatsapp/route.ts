@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { generateBotReply } from '@/src/lib/ai/chatbot';
 import { sendWhatsAppText } from '@/src/lib/whatsapp';
+import { uploadToStorage } from '@/src/lib/storage';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -175,8 +176,8 @@ export async function POST(request: Request) {
             body.entry[0].changes[0].value
           ) {
             const value = body.entry[0].changes[0].value;
-            const message = value.messages?.[0];
-            if (message) {
+        const message = value.messages?.[0];
+        if (message) {
           const contact = value.contacts ? value.contacts[0] : null;
 
           const waId = contact ? contact.wa_id : message.from;
@@ -218,6 +219,8 @@ export async function POST(request: Request) {
             return new NextResponse('Internal Server Error', { status: 500 });
           }
 
+          let mediaUrl: string | undefined;
+          let mediaPath: string | undefined;
           const mediaInfo = message.image
             ? {
                 media_id: message.image.id,
@@ -225,6 +228,50 @@ export async function POST(request: Request) {
                 media_caption: message.image.caption,
               }
             : undefined;
+
+          // If it's an image, try to download and store in Supabase
+          if (message.image?.id) {
+            try {
+              const metaResponse = await fetch(
+                `https://graph.facebook.com/v21.0/${message.image.id}`,
+                {
+                  headers: {
+                    Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                  },
+                }
+              );
+              if (metaResponse.ok) {
+                const meta = await metaResponse.json();
+                const url = meta.url as string | undefined;
+                const mimeType = meta.mime_type as string | undefined;
+
+                if (url) {
+                  const mediaResponse = await fetch(url, {
+                    headers: {
+                      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                    },
+                  });
+                  if (mediaResponse.ok) {
+                    const arrayBuffer = await mediaResponse.arrayBuffer();
+                    const storagePath = `chats/${chatData.id}/${message.image.id}`;
+                    const { path: storedPath, error: storageError } = await uploadToStorage({
+                      file: Buffer.from(arrayBuffer),
+                      path: storagePath,
+                      contentType: mimeType,
+                    });
+                    if (storageError) {
+                      console.error("Storage upload error (inbound media):", storageError);
+                    } else {
+                      mediaPath = storedPath ?? storagePath;
+                      mediaUrl = `/api/storage/media?path=${encodeURIComponent(mediaPath)}`;
+                    }
+                  }
+                }
+              }
+            } catch (storageErr) {
+              console.error("Error downloading/uploading inbound media:", storageErr);
+            }
+          }
 
           const messageBody =
             message.text?.body ||
@@ -246,6 +293,9 @@ export async function POST(request: Request) {
               ? new Date(parseInt(message.timestamp) * 1000).toISOString()
               : new Date().toISOString(),
             sender_name: name,
+            media_id: message.image?.id,
+            media_path: mediaPath,
+            media_url: mediaUrl,
             created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
           });
 

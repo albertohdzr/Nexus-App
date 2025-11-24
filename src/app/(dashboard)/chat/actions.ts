@@ -72,6 +72,9 @@ export async function sendMessage(formData: FormData) {
   let payload: Record<string, any> | undefined;
   let type: "text" | "image" = "text";
   let bodyToStore = messageBody;
+  let mediaId: string | undefined;
+  let mediaUrl: string | undefined;
+  let mediaPath: string | undefined;
 
   // 3. Upload media if present, then send
   try {
@@ -84,7 +87,7 @@ export async function sendMessage(formData: FormData) {
         return { error: "La imagen debe pesar máximo 5 MB" };
       }
 
-      const { mediaId, error: uploadError } = await uploadWhatsAppMedia({
+      const { mediaId: uploadedMediaId, error: uploadError } = await uploadWhatsAppMedia({
         phoneNumberId: org.phone_number_id,
         accessToken,
         file: media,
@@ -92,7 +95,7 @@ export async function sendMessage(formData: FormData) {
         fileName: media.name || `image-${Date.now()}.jpg`,
       });
 
-      if (uploadError || !mediaId) {
+      if (uploadError || !uploadedMediaId) {
         console.error("WhatsApp media upload error:", uploadError);
         return { error: `Error subiendo imagen: ${uploadError || "sin detalle"}` };
       }
@@ -101,7 +104,7 @@ export async function sendMessage(formData: FormData) {
         phoneNumberId: org.phone_number_id,
         accessToken,
         to: chat.wa_id,
-        mediaId,
+        mediaId: uploadedMediaId,
         caption: caption || messageBody || undefined,
       });
 
@@ -113,8 +116,26 @@ export async function sendMessage(formData: FormData) {
       waMessageId = messageId;
       type = "image";
       bodyToStore = caption || messageBody || "";
+      mediaId = uploadedMediaId;
+      // Store a copy in Supabase Storage
+      try {
+        const buffer = Buffer.from(await media.arrayBuffer());
+        const storagePath = `chats/${chatId}/${uploadedMediaId}-${media.name}`;
+        const { path: storedPath, error: storageError } = await (await import("@/src/lib/storage")).uploadToStorage({
+          file: buffer,
+          path: storagePath,
+          contentType: mimeType,
+        });
+        if (storageError) {
+          console.error("Storage upload error:", storageError);
+        } else {
+          mediaPath = storedPath;
+        }
+      } catch (storageErr) {
+        console.error("Storage upload unexpected error:", storageErr);
+      }
       payload = {
-        media_id: mediaId,
+        media_id: uploadedMediaId,
         media_mime_type: mimeType,
         media_file_name: media.name,
         caption: caption || null,
@@ -146,6 +167,9 @@ export async function sendMessage(formData: FormData) {
       sender_profile_id: user.id,
       sender_name: profile ? `${profile.first_name} ${profile.last_name}` : null,
       payload,
+      media_id: mediaId,
+      media_url: mediaPath ? `/api/storage/media?path=${encodeURIComponent(mediaPath)}` : mediaUrl,
+      media_path: mediaPath,
       created_at: createdAt,
     });
 

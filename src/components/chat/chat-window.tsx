@@ -28,6 +28,9 @@ type Message = {
     delivered_at?: string | null;
     read_at?: string | null;
     sender_name?: string | null;
+    media_id?: string | null;
+    media_url?: string | null;
+    media_path?: string | null;
     payload?: {
         from?: string;
         handover?: boolean;
@@ -259,7 +262,9 @@ export default function ChatWindow() {
                     const isReceived = message.status === 'received';
                     const isBot = message.payload?.from === "bot";
                     const displayTime = message.wa_timestamp || message.created_at;
-                    const isImageMessage = message.type === "image" || Boolean((message.payload as any)?.media_id);
+                    const mediaId = message.media_id || (message.payload as any)?.media_id;
+                    const mediaUrl = message.media_url || (message.media_path ? `/api/storage/media?path=${encodeURIComponent(message.media_path)}` : undefined);
+                    const isImageMessage = message.type === "image" || Boolean(mediaId);
                     const displayName =
                         message.sender_name ||
                         (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
@@ -288,6 +293,14 @@ export default function ChatWindow() {
                                             </span>
                                             <span>Imagen</span>
                                         </div>
+                                        {(mediaUrl || mediaId) && (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                                src={mediaUrl || `/api/whatsapp/media/${mediaId}`}
+                                                alt={message.body || "Imagen"}
+                                                className="max-h-72 w-full rounded-xl object-cover border border-border/50"
+                                            />
+                                        )}
                                         {message.body && (
                                             <p className="text-sm leading-relaxed whitespace-pre-wrap">
                                                 {message.body}

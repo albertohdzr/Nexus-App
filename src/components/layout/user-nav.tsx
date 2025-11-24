@@ -1,6 +1,7 @@
 
 "use client"
 
+import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar"
 import { Button } from "@/src/components/ui/button"
 import {
@@ -28,13 +29,20 @@ export function UserNav() {
     const router = useRouter()
     const supabase = createClient()
     const { setTheme } = useTheme()
+    const [mounted, setMounted] = useState(false)
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     const handleSignOut = async () => {
         await supabase.auth.signOut()
         router.push("/login")
     }
 
-    if (!user) return null
+    if (!mounted || !user) {
+        return <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+    }
 
     // Get initials from metadata or email
     const fullName = user.user_metadata?.full_name || "User"
