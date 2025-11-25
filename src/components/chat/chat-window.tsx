@@ -43,6 +43,7 @@ type MessagePayload = {
     media_mime_type?: string;
     media_file_name?: string;
     media_caption?: string;
+    voice?: boolean;
     status_detail?: unknown;
 };
 
@@ -55,6 +56,16 @@ type Chat = {
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];
+const ALLOWED_AUDIO_TYPES = [
+    "audio/aac",
+    "audio/amr",
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/ogg; codecs=opus",
+    "audio/opus",
+];
+const MAX_AUDIO_BYTES = 16 * 1024 * 1024; // 16 MB
 const ALLOWED_DOC_TYPES = [
     "text/plain",
     "application/vnd.ms-excel",
@@ -76,6 +87,9 @@ export default function ChatWindow() {
     const [attachment, setAttachment] = useState<File | null>(null);
     const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const recordedChunksRef = useRef<BlobPart[]>([]);
     const supabase = createClient();
     const searchParams = useSearchParams();
     const chatId = searchParams.get("chatId");
@@ -86,8 +100,9 @@ export default function ChatWindow() {
     const handleFileSelection = (file: File) => {
         const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
         const isDoc = ALLOWED_DOC_TYPES.includes(file.type);
-        if (!isImage && !isDoc) {
-            toast.error("Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT o imagen JPEG/PNG.");
+        const isAudio = ALLOWED_AUDIO_TYPES.includes(file.type);
+        if (!isImage && !isDoc && !isAudio) {
+            toast.error("Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT, audio (AAC/AMR/MP3/OGG) o imagen JPEG/PNG.");
             return;
         }
         if (isImage && file.size > MAX_IMAGE_BYTES) {
@@ -96,6 +111,10 @@ export default function ChatWindow() {
         }
         if (isDoc && file.size > MAX_DOC_BYTES) {
             toast.error("El archivo debe pesar máximo 100 MB");
+            return;
+        }
+        if (isAudio && file.size > MAX_AUDIO_BYTES) {
+            toast.error("El audio debe pesar máximo 16 MB");
             return;
         }
         if (attachmentPreview) {
@@ -291,7 +310,10 @@ export default function ChatWindow() {
                     const mediaUrl = message.media_url || (message.media_path ? `/api/storage/media?path=${encodeURIComponent(message.media_path)}` : undefined);
                     const mediaMime = message.payload?.media_mime_type;
                     const isImageMessage = message.type === "image" || Boolean(mediaId && mediaMime?.startsWith?.("image/"));
-                    const isDocumentMessage = message.type === "document" || (mediaMime ? !mediaMime.startsWith("image/") : false);
+                    const isAudioMessage = message.type === "audio" || Boolean(mediaMime && mediaMime.startsWith("audio/"));
+                    const isDocumentMessage =
+                        message.type === "document" ||
+                        (mediaMime ? !mediaMime.startsWith("image/") && !mediaMime.startsWith("audio/") : false);
                     const displayName =
                         message.sender_name ||
                         (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
@@ -332,6 +354,27 @@ export default function ChatWindow() {
                                             <p className="text-sm leading-relaxed whitespace-pre-wrap">
                                                 {message.body}
                                             </p>
+                                        )}
+                                        {message.payload?.media_file_name && (
+                                            <p className="text-[11px] opacity-80">
+                                                {message.payload.media_file_name}
+                                            </p>
+                                        )}
+                                    </div>
+                                ) : isAudioMessage ? (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-xs font-semibold">
+                                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-background/60 text-muted-foreground">
+                                                🎤
+                                            </span>
+                                            <span>{message.payload?.voice ? "Nota de voz" : "Audio"}</span>
+                                        </div>
+                                        {mediaUrl && (
+                                            <audio
+                                                controls
+                                                className="w-full"
+                                                src={mediaUrl}
+                                            />
                                         )}
                                         {message.payload?.media_file_name && (
                                             <p className="text-[11px] opacity-80">
@@ -500,6 +543,7 @@ export default function ChatWindow() {
                         if (attachment) {
                             formData.set("media", attachment);
                         }
+                        formData.set("isVoice", attachment?.type?.startsWith("audio/") ? "true" : "false");
 
                         const result = await sendMessage(formData);
                         if (result.error) {
@@ -537,6 +581,7 @@ export default function ChatWindow() {
                             accept={[
                                 ...ALLOWED_IMAGE_TYPES,
                                 ...ALLOWED_DOC_TYPES,
+                                ...ALLOWED_AUDIO_TYPES,
                             ].join(",")}
                             className="hidden"
                             onChange={(e) => {
@@ -573,6 +618,75 @@ export default function ChatWindow() {
 
                     <SubmitButton disabled={!canSend} />
                 </form>
+                <div className="flex items-center gap-2 max-w-4xl mx-auto mt-2">
+                    <Button
+                        type="button"
+                        variant={isRecording ? "destructive" : "outline"}
+                        size="sm"
+                        onClick={async () => {
+                            if (isRecording) {
+                                mediaRecorderRef.current?.stop();
+                                setIsRecording(false);
+                                return;
+                            }
+                            try {
+                                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                                // Prefer containers WhatsApp accepts and that browsers emit with correct mime.
+                                const candidateMimes = [
+                                    "audio/ogg; codecs=opus",
+                                    "audio/ogg",
+                                    "audio/mpeg",
+                                    "audio/aac",
+                                    "audio/amr",
+                                ];
+                                const mimeType = candidateMimes.find((m) => MediaRecorder.isTypeSupported(m));
+                                if (!mimeType) {
+                                    toast.error("Tu navegador no soporta grabación en un formato aceptado por WhatsApp.");
+                                    return;
+                                }
+                                const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+                                recordedChunksRef.current = [];
+                                recorder.ondataavailable = (event) => {
+                                    if (event.data.size > 0) {
+                                        recordedChunksRef.current.push(event.data);
+                                    }
+                                };
+                                recorder.onstop = () => {
+                                    const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+                                    const extension = mimeType.includes("ogg")
+                                        ? "ogg"
+                                        : mimeType.includes("mpeg")
+                                        ? "mp3"
+                                        : mimeType.includes("aac")
+                                        ? "aac"
+                                        : mimeType.includes("amr")
+                                        ? "amr"
+                                        : "audio";
+                                    const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
+                                    handleFileSelection(file);
+                                    // Mark as voice note
+                                    setCaptionInput("");
+                                    const form = document.getElementById("message-form") as HTMLFormElement | null;
+                                    if (form) {
+                                        const hidden = form.querySelector("input[name='isVoice']") as HTMLInputElement | null;
+                                        if (hidden) hidden.value = "true";
+                                    }
+                                };
+                                mediaRecorderRef.current = recorder;
+                                recorder.start();
+                                setIsRecording(true);
+                            } catch (err) {
+                                console.error("Error recording audio:", err);
+                                toast.error("No se pudo iniciar la grabación. Revisa permisos del micrófono.");
+                            }
+                        }}
+                    >
+                        {isRecording ? "Detener grabación" : "Grabar audio"}
+                    </Button>
+                    {attachment?.type?.startsWith("audio/") && (
+                        <span className="text-sm text-muted-foreground">Se enviará como nota de voz</span>
+                    )}
+                </div>
             </div>
         </div>
     );

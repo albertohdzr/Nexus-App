@@ -2,6 +2,7 @@
 
 import { createClient } from "@/src/lib/supabase/server";
 import {
+  sendWhatsAppAudio,
   sendWhatsAppDocument,
   sendWhatsAppImage,
   sendWhatsAppText,
@@ -11,6 +12,16 @@ import { revalidatePath } from "next/cache";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];
+const ALLOWED_AUDIO_TYPES = [
+  "audio/aac",
+  "audio/amr",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/ogg",
+  "audio/ogg; codecs=opus",
+  "audio/opus",
+];
+const MAX_AUDIO_BYTES = 16 * 1024 * 1024; // 16 MB
 const ALLOWED_DOC_TYPES = [
   "text/plain",
   "application/vnd.ms-excel",
@@ -35,6 +46,7 @@ export async function sendMessage(formData: FormData) {
   const messageBody = (formData.get("message") as string) || "";
   const caption = (formData.get("caption") as string) || "";
   const media = formData.get("media") as File | null;
+  const isVoice = (formData.get("isVoice") as string) === "true";
 
   if (!chatId || (!messageBody && !media)) {
     return { error: "Chat ID and at least a message or image are required" };
@@ -82,12 +94,13 @@ export async function sendMessage(formData: FormData) {
   const createdAt = new Date().toISOString();
   let waMessageId: string | undefined;
   let payload: Record<string, unknown> | undefined;
-  let type: "text" | "image" | "document" = "text";
+  let type: "text" | "image" | "document" | "audio" = "text";
   let bodyToStore = messageBody;
   let mediaId: string | undefined;
   let mediaUrl: string | undefined;
   let mediaPath: string | undefined;
   let fileName: string | undefined;
+  let mediaMimeType: string | undefined;
 
   // 3. Upload media if present, then send
   try {
@@ -96,9 +109,10 @@ export async function sendMessage(formData: FormData) {
       fileName = media.name || undefined;
       const isImage = ALLOWED_IMAGE_TYPES.includes(mimeType);
       const isDoc = ALLOWED_DOC_TYPES.includes(mimeType);
+      const isAudio = ALLOWED_AUDIO_TYPES.includes(mimeType);
 
-      if (!isImage && !isDoc) {
-        return { error: "Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT o imagen JPEG/PNG." };
+      if (!isImage && !isDoc && !isAudio) {
+        return { error: "Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT, audio (AAC/AMR/MP3/MP4/OGG) o imagen JPEG/PNG." };
       }
 
       if (isImage && media.size > MAX_IMAGE_BYTES) {
@@ -106,6 +120,9 @@ export async function sendMessage(formData: FormData) {
       }
       if (isDoc && media.size > MAX_DOC_BYTES) {
         return { error: "El archivo debe pesar máximo 100 MB" };
+      }
+      if (isAudio && media.size > MAX_AUDIO_BYTES) {
+        return { error: "El audio debe pesar máximo 16 MB" };
       }
 
       const { mediaId: uploadedMediaId, error: uploadError } = await uploadWhatsAppMedia({
@@ -133,7 +150,7 @@ export async function sendMessage(formData: FormData) {
           mediaId: uploadedMediaId,
           caption: caption || messageBody || undefined,
         });
-      } else {
+      } else if (isDoc) {
         sendResult = await sendWhatsAppDocument({
           phoneNumberId: org.phone_number_id,
           accessToken,
@@ -141,6 +158,14 @@ export async function sendMessage(formData: FormData) {
           mediaId: uploadedMediaId,
           fileName,
           caption: caption || messageBody || undefined,
+        });
+      } else {
+        sendResult = await sendWhatsAppAudio({
+          phoneNumberId: org.phone_number_id,
+          accessToken,
+          to: chat.wa_id,
+          mediaId: uploadedMediaId,
+          voice: isVoice,
         });
       }
 
@@ -150,9 +175,10 @@ export async function sendMessage(formData: FormData) {
       }
 
       waMessageId = sendResult?.messageId;
-      type = isImage ? "image" : "document";
-      bodyToStore = caption || messageBody || fileName || "";
+      type = isImage ? "image" : isDoc ? "document" : "audio";
+      bodyToStore = caption || messageBody || fileName || (isVoice ? "Mensaje de voz" : "");
       mediaId = uploadedMediaId;
+      mediaMimeType = mimeType;
       // Store a copy in Supabase Storage
       try {
         const buffer = Buffer.from(await media.arrayBuffer());
@@ -206,6 +232,7 @@ export async function sendMessage(formData: FormData) {
       media_id: mediaId,
       media_url: mediaPath ? `/api/storage/media?path=${encodeURIComponent(mediaPath)}` : mediaUrl,
       media_path: mediaPath,
+      media_mime_type: mediaMimeType,
       created_at: createdAt,
     });
 

@@ -19,6 +19,7 @@ type WhatsAppMessage = {
   text?: { body?: string };
   image?: { id: string; mime_type?: string; caption?: string };
   document?: { id: string; mime_type?: string; filename?: string; sha256?: string };
+  audio?: { id: string; mime_type?: string; voice?: boolean };
   [key: string]: unknown;
 };
 
@@ -251,16 +252,25 @@ export async function POST(request: Request) {
           let mediaPath: string | undefined;
           const isImage = message.type === "image" && message.image?.id;
           const isDocument = message.type === "document" && message.document?.id;
-          const mediaId = isImage ? message.image?.id : isDocument ? message.document?.id : undefined;
+          const isAudio = message.type === "audio" && message.audio?.id;
+          const mediaId = isImage
+            ? message.image?.id
+            : isDocument
+            ? message.document?.id
+            : isAudio
+            ? message.audio?.id
+            : undefined;
           const mediaMime = isImage
             ? message.image?.mime_type
             : isDocument
             ? message.document?.mime_type
+            : isAudio
+            ? message.audio?.mime_type
             : undefined;
           const mediaFileName = isDocument ? message.document?.filename : undefined;
           const mediaCaption = isImage ? message.image?.caption : undefined;
 
-          // If it's media (image or document), try to download and store in Supabase
+          // If it's media (image, document, audio), try to download and store in Supabase
           if (mediaId) {
             try {
               const metaResponse = await fetch(
@@ -308,6 +318,7 @@ export async function POST(request: Request) {
             message.text?.body ||
             message.image?.caption ||
             message.document?.filename ||
+            (message.audio ? "Mensaje de voz" : undefined) ||
             "[Media/Other]";
 
           // 3. Insert Message
@@ -323,6 +334,7 @@ export async function POST(request: Request) {
               media_mime_type: mediaMime,
               media_file_name: mediaFileName,
               media_caption: mediaCaption,
+              voice: message.audio?.voice,
             },
             wa_timestamp: message.timestamp
               ? new Date(parseInt(message.timestamp) * 1000).toISOString()
@@ -331,6 +343,7 @@ export async function POST(request: Request) {
             media_id: mediaId,
             media_path: mediaPath,
             media_url: mediaUrl,
+            media_mime_type: mediaMime,
             created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
           });
 
