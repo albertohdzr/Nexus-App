@@ -88,6 +88,7 @@ export default function ChatWindow() {
     const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
+    const [isConverting, setIsConverting] = useState(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<BlobPart[]>([]);
     const supabase = createClient();
@@ -97,31 +98,56 @@ export default function ChatWindow() {
     const pickerRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleFileSelection = (file: File) => {
-        const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
-        const isDoc = ALLOWED_DOC_TYPES.includes(file.type);
-        const isAudio = ALLOWED_AUDIO_TYPES.includes(file.type);
+    const handleFileSelection = async (file: File) => {
+        let workingFile = file;
+        const wantsAudioConversion =
+            file.type.startsWith("audio/") && file.type !== "audio/mp4";
+
+        if (wantsAudioConversion) {
+            try {
+                setIsConverting(true);
+                const { convertBlobToMp4 } = await import("@/src/lib/convert-audio");
+                const mp4Blob = await convertBlobToMp4(file);
+                const baseName = file.name.replace(/\.[^/.]+$/, "") || "audio";
+                workingFile = new File(
+                    [mp4Blob],
+                    `${baseName}-${Date.now()}.m4a`,
+                    { type: "audio/mp4" }
+                );
+            } catch (err) {
+                console.error("Error converting audio:", err);
+                toast.error("No se pudo convertir el audio a MP4/AAC.");
+                setIsConverting(false);
+                return;
+            }
+            setIsConverting(false);
+        }
+
+        const isImage = ALLOWED_IMAGE_TYPES.includes(workingFile.type);
+        const isDoc = ALLOWED_DOC_TYPES.includes(workingFile.type);
+        const isAudio = ALLOWED_AUDIO_TYPES.includes(workingFile.type);
         if (!isImage && !isDoc && !isAudio) {
-            toast.error("Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT, audio (AAC/AMR/MP3/OGG) o imagen JPEG/PNG.");
+            toast.error("Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT, audio (AAC/AMR/MP3/OGG/MP4) o imagen JPEG/PNG.");
             return;
         }
-        if (isImage && file.size > MAX_IMAGE_BYTES) {
+        if (isImage && workingFile.size > MAX_IMAGE_BYTES) {
             toast.error("La imagen debe pesar máximo 5 MB");
             return;
         }
-        if (isDoc && file.size > MAX_DOC_BYTES) {
+        if (isDoc && workingFile.size > MAX_DOC_BYTES) {
             toast.error("El archivo debe pesar máximo 100 MB");
             return;
         }
-        if (isAudio && file.size > MAX_AUDIO_BYTES) {
+        if (isAudio && workingFile.size > MAX_AUDIO_BYTES) {
             toast.error("El audio debe pesar máximo 16 MB");
             return;
         }
         if (attachmentPreview) {
             URL.revokeObjectURL(attachmentPreview);
         }
-        const previewUrl = isImage || file.type === "application/pdf" ? URL.createObjectURL(file) : null;
-        setAttachment(file);
+        const previewUrl =
+            isImage || workingFile.type === "application/pdf" ? URL.createObjectURL(workingFile) : null;
+        setAttachment(workingFile);
         setAttachmentPreview(previewUrl);
     };
 
@@ -254,7 +280,7 @@ export default function ChatWindow() {
                 setIsDragging(false);
                 const file = e.dataTransfer.files?.[0];
                 if (file) {
-                    handleFileSelection(file);
+                    void handleFileSelection(file);
                 }
             }}
         >
@@ -459,7 +485,7 @@ export default function ChatWindow() {
                     setIsDragging(false);
                     const file = e.dataTransfer.files?.[0];
                     if (file) {
-                        handleFileSelection(file);
+                        void handleFileSelection(file);
                     }
                 }}
             >
@@ -586,7 +612,7 @@ export default function ChatWindow() {
                             className="hidden"
                             onChange={(e) => {
                                 const file = e.target.files?.[0];
-                                if (file) handleFileSelection(file);
+                                if (file) void handleFileSelection(file);
                             }}
                         />
                     </div>
@@ -616,7 +642,7 @@ export default function ChatWindow() {
                         </Button>
                     </div>
 
-                    <SubmitButton disabled={!canSend} />
+                    <SubmitButton disabled={!canSend || isConverting} />
                 </form>
                 <div className="flex items-center gap-2 max-w-4xl mx-auto mt-2">
                     <Button
@@ -640,11 +666,10 @@ export default function ChatWindow() {
                                     "audio/amr",
                                 ];
                                 const mimeType = candidateMimes.find((m) => MediaRecorder.isTypeSupported(m));
-                                if (!mimeType) {
-                                    toast.error("Tu navegador no soporta grabación en un formato aceptado por WhatsApp.");
-                                    return;
-                                }
-                                const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+                                const recorder = new MediaRecorder(
+                                    stream,
+                                    mimeType ? { mimeType } : undefined
+                                );
                                 recordedChunksRef.current = [];
                                 recorder.ondataavailable = (event) => {
                                     if (event.data.size > 0) {
@@ -652,25 +677,38 @@ export default function ChatWindow() {
                                     }
                                 };
                                 recorder.onstop = () => {
-                                    const blob = new Blob(recordedChunksRef.current, { type: mimeType });
-                                    const extension = mimeType.includes("ogg")
-                                        ? "ogg"
-                                        : mimeType.includes("mpeg")
-                                        ? "mp3"
-                                        : mimeType.includes("aac")
-                                        ? "aac"
-                                        : mimeType.includes("amr")
-                                        ? "amr"
-                                        : "audio";
-                                    const file = new File([blob], `voice-${Date.now()}.${extension}`, { type: mimeType });
-                                    handleFileSelection(file);
-                                    // Mark as voice note
-                                    setCaptionInput("");
-                                    const form = document.getElementById("message-form") as HTMLFormElement | null;
-                                    if (form) {
-                                        const hidden = form.querySelector("input[name='isVoice']") as HTMLInputElement | null;
-                                        if (hidden) hidden.value = "true";
-                                    }
+                                    (async () => {
+                                        try {
+                                            const blob = new Blob(recordedChunksRef.current, { type: mimeType || "audio/webm" });
+                                            let file = new File([blob], `voice-${Date.now()}.ogg`, { type: mimeType || "audio/ogg" });
+                                            if (!ALLOWED_AUDIO_TYPES.includes(file.type)) {
+                                                try {
+                                                    setIsConverting(true);
+                                                    const { convertBlobToMp4 } = await import("@/src/lib/convert-audio");
+                                                    const mp4Blob = await convertBlobToMp4(blob);
+                                                    file = new File([mp4Blob], `voice-${Date.now()}.m4a`, { type: "audio/mp4" });
+                                                } finally {
+                                                    setIsConverting(false);
+                                                }
+                                            }
+                                            await handleFileSelection(file);
+                                            // Mark as voice note
+                                            setCaptionInput("");
+                                            const form = document.getElementById("message-form") as HTMLFormElement | null;
+                                            if (form) {
+                                                const hidden = form.querySelector("input[name='isVoice']") as HTMLInputElement | null;
+                                                if (hidden) hidden.value = "true";
+                                            }
+                                        } catch (err) {
+                                            console.error("Error processing recorded audio:", err);
+                                            toast.error("No se pudo procesar el audio grabado.");
+                                            setIsConverting(false);
+                                        } finally {
+                                            stream.getTracks().forEach((track) => track.stop());
+                                            mediaRecorderRef.current = null;
+                                            setIsRecording(false);
+                                        }
+                                    })();
                                 };
                                 mediaRecorderRef.current = recorder;
                                 recorder.start();
@@ -685,6 +723,9 @@ export default function ChatWindow() {
                     </Button>
                     {attachment?.type?.startsWith("audio/") && (
                         <span className="text-sm text-muted-foreground">Se enviará como nota de voz</span>
+                    )}
+                    {isConverting && (
+                        <span className="text-xs text-muted-foreground">Convirtiendo a MP4...</span>
                     )}
                 </div>
             </div>
