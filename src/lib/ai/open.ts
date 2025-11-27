@@ -1,59 +1,83 @@
 import OpenAI from "openai";
 
-const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+type ReasoningEffort = "low" | "medium" | "high";
 
-const MODEL_INSTRUCTIONS = "Eres el asistente un asistente de prueba, contesta de la manera mas chistosa que se te ocurra, habla como pirata.";
-const REASONING_EFFORT = "low";
+type CreateResponseOptions = {
+  input: string;
+  conversationId?: string;
+  model?: string;
+  instructions?: string;
+  reasoningEffort?: ReasoningEffort;
+};
 
-const createResponse = async function (input: string, conversationId?: string, model?: string, instructions?: string) {
-    const response = await client.responses.create({
-        model: model || "gpt-4o-mini",
-        instructions: instructions || MODEL_INSTRUCTIONS,
-        reasoning: { effort: REASONING_EFFORT },
-        input,
-        conversation: conversationId || "",
-    });
-    console.log(response);
-    return response;
-}
-    
+type ConversationMetadata = Record<string, string>;
 
-const createConversation = async function () {
-    const conversation = await client.conversations.create({
-        metadata: {
-            organizationName: "CAT - Nexus",
-        },
-    });
-    console.log(conversation);
-    return conversation;
+const apiKey = process.env.OPENAI_API_KEY;
+
+if (!apiKey) {
+  throw new Error("Missing OPENAI_API_KEY environment variable.");
 }
 
-const getConversation = async function (conversationId: string) {
-    const conversation = await client.conversations.retrieve(conversationId);
-    console.log(conversation);
-    return conversation;
-}
+const client = new OpenAI({ apiKey });
 
-const deleteConversation = async function (conversationId: string) {
-    const conversation = await client.conversations.delete(conversationId);
-    console.log(conversation);
-    return conversation;
-}
+const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_INSTRUCTIONS =
+  "Eres el asistente un asistente de prueba, contesta de la manera mas chistosa que se te ocurra, habla como pirata.";
+const DEFAULT_REASONING: ReasoningEffort = "low";
 
-const updateConversation = async function (conversationId: string, metadata: any) {
-    const conversation = await client.conversations.update(conversationId, {
-        metadata,
-    });
-    console.log(conversation);
-    return conversation;
-}
+const createResponse = async ({
+  input,
+  conversationId,
+  model,
+  instructions,
+  reasoningEffort,
+}: CreateResponseOptions) => {
+  return client.responses.create({
+    model: model ?? DEFAULT_MODEL,
+    instructions: instructions ?? DEFAULT_INSTRUCTIONS,
+    reasoning: { effort: reasoningEffort ?? DEFAULT_REASONING },
+    input,
+    ...(conversationId ? { conversation: conversationId } : {}),
+  });
+};
 
-const listConversationItems = async function (conversationId: string, limit: number = 10) {
-    const conversation = await client.conversations.items.list(conversationId, {
-        limit,
-    });
-    console.log(conversation);
-    return conversation;
-}
+const createConversation = async (metadata?: ConversationMetadata) => {
+  return client.conversations.create({
+    metadata: metadata ?? {
+      organizationName: "CAT - Nexus",
+    },
+  });
+};
+
+const getConversation = async (conversationId: string) => {
+  return client.conversations.retrieve(conversationId);
+};
+
+const deleteConversation = async (conversationId: string) => {
+  return client.conversations.delete(conversationId);
+};
+
+const updateConversation = async (
+  conversationId: string,
+  metadata: ConversationMetadata,
+) => {
+  return client.conversations.update(conversationId, { metadata });
+};
+
+const listConversationItems = async (
+  conversationId: string,
+  limit = 10,
+) => {
+  return client.conversations.items.list(conversationId, { limit });
+};
+
+export const openAIService = {
+  createResponse,
+  createConversation,
+  getConversation,
+  deleteConversation,
+  updateConversation,
+  listConversationItems,
+};
+
+export type { ConversationMetadata, CreateResponseOptions, ReasoningEffort };
