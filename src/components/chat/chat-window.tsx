@@ -296,12 +296,12 @@ export default function ChatWindow() {
                     const displayTime = message.wa_timestamp || message.created_at;
                     const mediaId = message.media_id || message.payload?.media_id;
                     const mediaUrl = message.media_url || (message.media_path ? `/api/storage/media?path=${encodeURIComponent(message.media_path)}` : undefined);
-                    const mediaMime = message.payload?.media_mime_type;
-                    const isImageMessage = message.type === "image" || Boolean(mediaId && mediaMime?.startsWith?.("image/"));
-                    const isAudioMessage = message.type === "audio" || Boolean(mediaMime && mediaMime.startsWith("audio/"));
+                    const mediaMime = message.payload?.media_mime_type as string | undefined;
+                    const isImageMessage = message.type === "image" || Boolean(mediaId && mediaMime && typeof mediaMime === 'string' && mediaMime.startsWith("image/"));
+                    const isAudioMessage = message.type === "audio" || Boolean(mediaMime && typeof mediaMime === 'string' && mediaMime.startsWith("audio/"));
                     const isDocumentMessage =
                         message.type === "document" ||
-                        (mediaMime ? !mediaMime.startsWith("image/") && !mediaMime.startsWith("audio/") : false);
+                        (mediaMime && typeof mediaMime === 'string' ? !mediaMime.startsWith("image/") && !mediaMime.startsWith("audio/") : false);
                     const displayName =
                         message.sender_name ||
                         (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
@@ -330,7 +330,7 @@ export default function ChatWindow() {
                                             </span>
                                             <span>Imagen</span>
                                         </div>
-                                        {(mediaUrl || mediaId) && (
+                                        {(Boolean(mediaUrl) || Boolean(mediaId)) && (
                                             // eslint-disable-next-line @next/next/no-img-element
                                             <img
                                                 src={mediaUrl || `/api/whatsapp/media/${mediaId}`}
@@ -343,9 +343,9 @@ export default function ChatWindow() {
                                                 {message.body}
                                             </p>
                                         )}
-                                        {message.payload?.media_file_name && (
+                                        {Boolean(message.payload?.media_file_name) && (
                                             <p className="text-[11px] opacity-80">
-                                                {message.payload.media_file_name}
+                                                {String(message.payload?.media_file_name)}
                                             </p>
                                         )}
                                     </div>
@@ -364,9 +364,9 @@ export default function ChatWindow() {
                                                 src={mediaUrl}
                                             />
                                         )}
-                                        {message.payload?.media_file_name && (
+                                        {Boolean(message.payload?.media_file_name) && (
                                             <p className="text-[11px] opacity-80">
-                                                {message.payload.media_file_name}
+                                                {String(message.payload?.media_file_name)}
                                             </p>
                                         )}
                                     </div>
@@ -405,9 +405,9 @@ export default function ChatWindow() {
                                                 </a>
                                             </Button>
                                         )}
-                                        {message.payload?.media_file_name && (
+                                        {Boolean(message.payload?.media_file_name) && (
                                             <p className="text-[11px] opacity-80">
-                                                {message.payload.media_file_name}
+                                                {String(message.payload?.media_file_name)}
                                             </p>
                                         )}
                                     </div>

@@ -5,7 +5,8 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/src/lib/utils"
-import { navigationModules, superAdminModules, type UserRole } from "@/src/config/navigation"
+import { navigationModules, superAdminModules } from "@/src/config/navigation"
+import { type UserRole } from "@/src/types/navigation"
 import { useUser } from "@/src/components/providers/auth-provider"
 import {
     Tooltip,

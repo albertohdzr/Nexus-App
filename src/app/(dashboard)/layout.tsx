@@ -1,10 +1,8 @@
 import { createClient } from "@/src/lib/supabase/server"
 import { AuthProvider } from "@/src/components/providers/auth-provider"
 import { redirect } from "next/navigation"
-import { ModuleSidebar } from "@/src/components/layout/module-sidebar"
-import { SubSidebar } from "@/src/components/layout/sub-sidebar"
+import { Sidebar } from "@/src/components/layout/sidebar"
 import { TopNav } from "@/src/components/layout/top-nav"
-import { MainContent } from "@/src/components/layout/main-content"
 
 export default async function DashboardLayout({
     children,
@@ -42,20 +40,13 @@ export default async function DashboardLayout({
 
     return (
         <AuthProvider initialUser={user} initialRole={role}>
-            <div className="flex h-screen w-full overflow-hidden">
-                <ModuleSidebar />
+            <div className="flex h-screen w-full overflow-hidden bg-background">
+                <Sidebar />
                 <div className="flex-1 flex flex-col overflow-hidden">
                     <TopNav organizationName={orgName} organizationLogo={orgLogo} />
-                    <div className="flex flex-1 overflow-hidden">
-                        <SubSidebar />
-                        <main className="flex-1 flex flex-col overflow-hidden">
-                            <div className="@container/main flex flex-1 flex-col gap-2 overflow-hidden">
-                                <MainContent>
-                                    {children}
-                                </MainContent>
-                            </div>
-                        </main>
-                    </div>
+                    <main className="flex-1 overflow-y-auto p-6">
+                        {children}
+                    </main>
                 </div>
             </div>
         </AuthProvider>

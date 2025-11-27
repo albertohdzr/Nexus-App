@@ -60,7 +60,11 @@ export default function ChatSidebar() {
                                 setChats((prev) =>
                                     prev.map((chat) =>
                                         chat.id === payload.new.id ? (payload.new as Chat) : chat
-                                    ).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+                                    ).sort((a, b) => {
+                                        const dateA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+                                        const dateB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+                                        return dateB - dateA;
+                                    })
                                 );
                             }
                         }

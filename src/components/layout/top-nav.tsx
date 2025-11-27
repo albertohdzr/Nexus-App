@@ -1,18 +1,9 @@
-
 "use client"
 
-import Link from "next/link"
+import { Bell, Search } from "lucide-react"
 import { usePathname } from "next/navigation"
-import { UserNav } from "@/src/components/layout/user-nav"
-import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
-} from "@/src/components/ui/breadcrumb"
-import { Fragment } from "react"
+import { Input } from "@/src/components/ui/input"
+import { Button } from "@/src/components/ui/button"
 
 interface TopNavProps {
     organizationName: string
@@ -22,63 +13,32 @@ interface TopNavProps {
 export function TopNav({ organizationName, organizationLogo }: TopNavProps) {
     const pathname = usePathname()
 
-    // Generate breadcrumbs from pathname
-    // e.g. /dashboard/crm/leads -> Home > CRM > Leads
-    const segments = pathname.split('/').filter(Boolean)
-
-    // Map segments to readable titles (simple capitalization for now)
-    const breadcrumbs = segments.map((segment, index) => {
-        const href = `/${segments.slice(0, index + 1).join('/')}`
-        const title = segment.charAt(0).toUpperCase() + segment.slice(1)
-        const isLast = index === segments.length - 1
-
-        return { href, title, isLast }
-    })
+    // Get the current page title based on the path
+    const pathSegments = pathname.split('/').filter(Boolean)
+    const currentTitle = pathSegments.length > 0
+        ? pathSegments[pathSegments.length - 1].charAt(0).toUpperCase() + pathSegments[pathSegments.length - 1].slice(1)
+        : "Dashboard"
 
     return (
-        <header className="flex h-14 items-center gap-4 border-b bg-background px-6">
+        <header className="flex h-16 items-center justify-between gap-4 border-b bg-background px-6 py-4">
             <div className="flex items-center gap-4">
-                {/* Logo and Org Name */}
-                <div className="flex items-center gap-2 font-semibold">
-                    {organizationLogo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={organizationLogo} alt={organizationName} className="h-6 w-6 object-contain" />
-                    ) : (
-                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs">
-                            {organizationName.charAt(0)}
-                        </div>
-                    )}
-                    <span className="hidden md:inline-block">{organizationName}</span>
-                </div>
-
-                {/* Separator */}
-                <div className="h-4 w-[1px] bg-border mx-2" />
-
-                {/* Breadcrumbs */}
-                <Breadcrumb className="hidden md:flex">
-                    <BreadcrumbList>
-                        {breadcrumbs.map((crumb) => (
-                            <Fragment key={crumb.href}>
-                                <BreadcrumbItem>
-                                    {crumb.isLast ? (
-                                        <BreadcrumbPage>{crumb.title}</BreadcrumbPage>
-                                    ) : (
-                                        <BreadcrumbLink asChild>
-                                            <Link href={crumb.href}>{crumb.title}</Link>
-                                        </BreadcrumbLink>
-                                    )}
-                                </BreadcrumbItem>
-                                {!crumb.isLast && <BreadcrumbSeparator />}
-                            </Fragment>
-                        ))}
-                    </BreadcrumbList>
-                </Breadcrumb>
+                <h1 className="text-xl font-semibold text-foreground">{currentTitle}</h1>
             </div>
 
-            <div className="flex-1" />
-
-            <div className="flex items-center gap-2">
-                <UserNav />
+            <div className="flex items-center gap-4">
+                <div className="relative w-64">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Search"
+                        className="w-full bg-muted/50 pl-9 shadow-none md:w-[200px] lg:w-[300px]"
+                    />
+                </div>
+                <Button variant="ghost" size="icon" className="relative">
+                    <Bell className="h-5 w-5 text-muted-foreground" />
+                    <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
+                    <span className="sr-only">Notifications</span>
+                </Button>
             </div>
         </header>
     )

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar"
 import { Button } from "@/src/components/ui/button"
+import { cn } from "@/src/lib/utils"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -24,7 +25,11 @@ import { useRouter } from "next/navigation"
 import { Laptop, Moon, Sun, LogOut, User, Settings } from "lucide-react"
 import { useTheme } from "next-themes"
 
-export function UserNav() {
+interface UserNavProps {
+    showDetails?: boolean
+}
+
+export function UserNav({ showDetails = false }: UserNavProps) {
     const { user } = useUser()
     const router = useRouter()
     const supabase = createClient()
@@ -58,14 +63,25 @@ export function UserNav() {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Button variant="ghost" className={cn("relative h-8 w-8 rounded-full", showDetails && "h-auto w-full justify-start px-2 rounded-lg hover:bg-sidebar-accent")}>
                     <Avatar className="h-8 w-8">
                         <AvatarImage src={user.user_metadata?.avatar_url} alt={fullName} />
                         <AvatarFallback>{initials}</AvatarFallback>
                     </Avatar>
+                    {showDetails && (
+                        <div className="flex flex-col items-start ml-3 text-sm">
+                            <span className="font-medium">{fullName}</span>
+                            <span className="text-xs text-muted-foreground">{email}</span>
+                        </div>
+                    )}
+                    {showDetails && (
+                        <div className="ml-auto">
+                            <Settings className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                    )}
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
+            <DropdownMenuContent className="w-56" align={showDetails ? "start" : "end"} forceMount>
                 <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
                         <p className="text-sm font-medium leading-none">{fullName}</p>
