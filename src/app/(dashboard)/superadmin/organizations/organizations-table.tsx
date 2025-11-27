@@ -51,14 +51,9 @@ import {
 } from "@/src/components/ui/select"
 import Link from "next/link"
 import { Badge } from "@/src/components/ui/badge"
+import { OrganizationTableRow } from "@/src/types/organization"
 
-export type Organization = {
-    id: string
-    name: string
-    slug: string
-    plan: string
-    created_at: string
-}
+export type Organization = OrganizationTableRow
 
 export const columns: ColumnDef<Organization>[] = [
     {

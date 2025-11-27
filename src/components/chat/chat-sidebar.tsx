@@ -9,15 +9,7 @@ import { createClient } from "@/src/lib/supabase/client";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Plus, Search } from "lucide-react";
-
-type Chat = {
-    id: string;
-    wa_id: string;
-    name: string;
-    phone_number: string;
-    updated_at: string;
-    last_message?: string; // We might want to fetch this
-};
+import { Chat } from "@/src/types/chat";
 
 export default function ChatSidebar() {
     const [chats, setChats] = useState<Chat[]>([]);

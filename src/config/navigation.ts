@@ -12,25 +12,7 @@ import {
     Building2,
     Shield,
 } from "lucide-react"
-import { type ComponentType } from "react"
-
-export type UserRole = 'superadmin' | 'org_admin' | 'director' | 'admissions' | 'teacher' | 'finance' | 'staff' | 'parent' | 'student'
-
-export interface NavItem {
-    title: string
-    href: string
-    icon?: ComponentType<{ className?: string }>
-    roles?: UserRole[] // If undefined, accessible by all authenticated users (or handled by parent)
-}
-
-export interface ModuleConfig {
-    key: string
-    title: string
-    icon: ComponentType<{ className?: string }>
-    href: string // Landing page for the module
-    roles?: UserRole[]
-    subNavigation: NavItem[]
-}
+import { ModuleConfig, NavItem, UserRole } from "@/src/types/navigation"
 
 export const navigationModules: ModuleConfig[] = [
     {

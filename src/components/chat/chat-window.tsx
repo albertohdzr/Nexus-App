@@ -14,45 +14,7 @@ import { Input } from "../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { MoreVertical, Phone, Video, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download } from "lucide-react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
-
-type Message = {
-    id: string;
-    chat_id: string;
-    body: string;
-    type: string;
-    status: string;
-    created_at: string;
-    wa_message_id: string;
-    wa_timestamp?: string | null;
-    sent_at?: string | null;
-    delivered_at?: string | null;
-    read_at?: string | null;
-    sender_name?: string | null;
-    media_id?: string | null;
-    media_url?: string | null;
-    media_path?: string | null;
-    payload?: MessagePayload | null;
-};
-
-type MessagePayload = {
-    from?: string;
-    handover?: boolean;
-    reason?: string;
-    model?: string;
-    media_id?: string;
-    media_mime_type?: string;
-    media_file_name?: string;
-    media_caption?: string;
-    voice?: boolean;
-    status_detail?: unknown;
-};
-
-type Chat = {
-    id: string;
-    name: string;
-    phone_number: string;
-    wa_id: string;
-};
+import { Chat, Message } from "@/src/types/chat";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];

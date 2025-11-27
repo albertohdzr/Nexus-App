@@ -3,32 +3,7 @@ import { NextResponse } from 'next/server';
 import { generateBotReply } from '@/src/lib/ai/chatbot';
 import { sendWhatsAppText } from '@/src/lib/whatsapp';
 import { uploadToStorage } from '@/src/lib/storage';
-
-type WhatsAppStatus = {
-  id?: string;
-  status?: string;
-  timestamp?: string;
-  [key: string]: unknown;
-};
-
-type WhatsAppMessage = {
-  id: string;
-  timestamp: string;
-  type: string;
-  from?: string;
-  text?: { body?: string };
-  image?: { id: string; mime_type?: string; caption?: string };
-  document?: { id: string; mime_type?: string; filename?: string; sha256?: string };
-  audio?: { id: string; mime_type?: string; voice?: boolean };
-  [key: string]: unknown;
-};
-
-type WhatsAppValue = {
-  messages?: WhatsAppMessage[];
-  statuses?: WhatsAppStatus[];
-  contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
-  metadata: { display_phone_number: string; phone_number_id: string };
-};
+import { WhatsAppMessage, WhatsAppStatus, WhatsAppValue } from '@/src/types/whatsapp';
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

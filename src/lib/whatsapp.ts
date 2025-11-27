@@ -1,42 +1,10 @@
-type SendWhatsAppTextParams = {
-  phoneNumberId: string;
-  accessToken: string;
-  to: string;
-  body: string;
-};
-
-type UploadWhatsAppMediaParams = {
-  phoneNumberId: string;
-  accessToken: string;
-  file: File | Blob;
-  mimeType: string;
-  fileName?: string;
-};
-
-type SendWhatsAppImageParams = {
-  phoneNumberId: string;
-  accessToken: string;
-  to: string;
-  mediaId: string;
-  caption?: string;
-};
-
-type SendWhatsAppDocumentParams = {
-  phoneNumberId: string;
-  accessToken: string;
-  to: string;
-  mediaId: string;
-  fileName?: string;
-  caption?: string;
-};
-
-type SendWhatsAppAudioParams = {
-  phoneNumberId: string;
-  accessToken: string;
-  to: string;
-  mediaId: string;
-  voice?: boolean;
-};
+import {
+  SendWhatsAppAudioParams,
+  SendWhatsAppDocumentParams,
+  SendWhatsAppImageParams,
+  SendWhatsAppTextParams,
+  UploadWhatsAppMediaParams,
+} from "@/src/types/whatsapp";
 
 export async function sendWhatsAppText({
   phoneNumberId,

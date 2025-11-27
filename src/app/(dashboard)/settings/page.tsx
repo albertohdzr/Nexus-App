@@ -8,7 +8,7 @@ import { createClient } from "@/src/lib/supabase/client";
 import { Label } from "@/src/components/ui/label";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
-import { Organization } from "@/src/lib/types";
+import { Organization } from "@/src/types/organization";
 import { updateOrganization } from "./actions";
 
 export default function SettingsPage() {
