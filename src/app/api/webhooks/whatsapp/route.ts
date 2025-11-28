@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { openAIService, type ResponseTool } from "@/src/lib/ai/open";
+import { openAIService } from "@/src/lib/ai/open";
+import { generateChatbotReply, HANDOFF_RESPONSE_TEXT } from "@/src/lib/ai/chatbot";
 import { sendWhatsAppText } from "@/src/lib/whatsapp";
 import { uploadToStorage } from "@/src/lib/storage";
 import { WhatsAppValue } from "@/src/types/whatsapp";
@@ -12,28 +13,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my_secure_token";
 const SESSION_TIMEOUT_MS = 60_000;
-const HANDOFF_RESPONSE_TEXT = "Perfecto, en un momento una persona lo contactará.";
-const HANDOFF_TOOL: ResponseTool[] = [
-  {
-    type: "function",
-    name: "request_handoff",
-    description: "Usa esta función si el usuario pide hablar con un humano o un agente.",
-    parameters: {
-      type: "object",
-      properties: {
-        reason: {
-          type: "string",
-          description: "Breve razón o frase que resume la solicitud del usuario.",
-        },
-      },
-      required: ["reason"],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-];
-const HANDOFF_INSTRUCTIONS =
-  "Si el usuario pide hablar con una persona/humano/agente, llama a la función request_handoff y no respondas directamente.";
 
 type ChatRecord = {
   id: string;
@@ -228,80 +207,6 @@ const resolveChatSession = async ({
   }
 };
 
-const extractResponseText = (response: unknown) => {
-  const responseAny = response as
-    | { output_text?: string | null; output?: unknown[] }
-    | null
-    | undefined;
-
-  if (responseAny?.output_text) {
-    return responseAny.output_text;
-  }
-
-  const firstOutput = Array.isArray(responseAny?.output)
-    ? responseAny.output[0]
-    : undefined;
-
-  const firstContentRaw =
-    firstOutput && typeof firstOutput === "object"
-      ? (firstOutput as { content?: unknown }).content
-      : null;
-
-  const firstContent = Array.isArray(firstContentRaw)
-    ? firstContentRaw[0]
-    : null;
-
-  if (firstContent?.text && typeof firstContent.text === "string") {
-    return firstContent.text;
-  }
-
-  if (firstContent?.value && typeof firstContent.value === "string") {
-    return firstContent.value;
-  }
-
-  if (Array.isArray(responseAny?.output)) {
-    for (const output of responseAny.output) {
-      // @ts-expect-error - defensively traverse SDK output
-      const content = output?.content;
-      if (Array.isArray(content)) {
-        for (const chunk of content) {
-          if (typeof chunk?.text === "string" && chunk.text.trim().length > 0) {
-            return chunk.text;
-          }
-          if (typeof chunk?.value === "string" && chunk.value.trim().length > 0) {
-            return chunk.value;
-          }
-        }
-      }
-    }
-  }
-
-  return null;
-};
-
-const extractFunctionCalls = (response: unknown) => {
-  const responseAny = response as { output?: unknown[] } | null | undefined;
-  const outputs = Array.isArray(responseAny?.output) ? responseAny?.output : [];
-
-  return outputs
-    .map((output) => {
-      if (output && typeof output === "object" && (output as { type?: string }).type === "function_call") {
-        const typedOutput = output as {
-          name?: string;
-          arguments?: string | Record<string, unknown>;
-          call_id?: string;
-        };
-        return typedOutput;
-      }
-      return null;
-    })
-    .filter(Boolean) as Array<{
-    name?: string;
-    arguments?: string | Record<string, unknown>;
-    call_id?: string;
-  }>;
-};
-
 const handleAIResponse = async ({
   chat,
   organizationName,
@@ -407,22 +312,17 @@ const handleAIResponse = async ({
   }
 
   try {
-    const aiResponse = await openAIService.createResponse({
+    const chatbotReply = await generateChatbotReply({
       input: latestUserMessage,
       conversationId: session.conversation_id,
-      tools: HANDOFF_TOOL,
-      instructions: HANDOFF_INSTRUCTIONS,
     });
 
-    const functionCalls = extractFunctionCalls(aiResponse);
-    const handoffCall = functionCalls.find((call) => call.name === "request_handoff");
-    if (handoffCall) {
-      await handleHandoff(aiResponse.id);
+    if (chatbotReply.handoffRequested) {
+      await handleHandoff((chatbotReply.aiResponse as { id?: string })?.id);
       return;
     }
 
-    const replyText = extractResponseText(aiResponse);
-    if (!replyText) {
+    if (!chatbotReply.replyText) {
       console.warn("AI response did not return text output.");
       return;
     }
@@ -431,7 +331,7 @@ const handleAIResponse = async ({
       phoneNumberId,
       accessToken,
       to: waId,
-      body: replyText,
+      body: chatbotReply.replyText,
     });
 
     if (error) {
@@ -441,29 +341,21 @@ const handleAIResponse = async ({
 
     const nowIso = new Date().toISOString();
 
-    // First output message id (useful for tracing against OpenAI logs)
-    const firstOutput = Array.isArray((aiResponse as { output?: unknown[] }).output)
-      ? (aiResponse as { output?: unknown[] }).output?.[0]
-      : undefined;
-    const responseMessageId =
-      // @ts-expect-error - defensive read
-      firstOutput?.id && typeof firstOutput.id === "string" ? firstOutput.id : null;
-
     const { error: insertError } = await supabase.from("messages").insert({
       chat_id: chat.id,
       chat_session_id: session.id,
-      response_id: aiResponse.id,
+      response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
       wa_message_id: messageId,
-      body: replyText,
+      body: chatbotReply.replyText,
       type: "text",
       status: "sent",
       sent_at: nowIso,
       sender_name: "Bot",
       payload: {
-        model: (aiResponse as { model?: string }).model,
+        model: chatbotReply.model,
         conversation_id: session.conversation_id,
         organization: organizationName,
-        response_message_id: responseMessageId,
+        response_message_id: chatbotReply.responseMessageId,
       },
       created_at: nowIso,
     });
