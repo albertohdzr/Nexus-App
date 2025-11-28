@@ -35,7 +35,6 @@ const createResponse = async ({
   return client.responses.create({
     model: model ?? DEFAULT_MODEL,
     instructions: instructions ?? DEFAULT_INSTRUCTIONS,
-    reasoning: { effort: reasoningEffort ?? DEFAULT_REASONING },
     input,
     ...(conversationId ? { conversation: conversationId } : {}),
   });
