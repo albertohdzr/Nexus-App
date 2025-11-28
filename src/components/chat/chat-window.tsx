@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { MoreVertical, Phone, Video, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download } from "lucide-react";
+import { MoreVertical, Phone, Video, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download, Hand } from "lucide-react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 import { Chat, Message } from "@/src/types/chat";
 
@@ -53,6 +53,7 @@ export default function ChatWindow() {
     const [isConverting, setIsConverting] = useState(false);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const recordedChunksRef = useRef<BlobPart[]>([]);
+    const [isClosing, setIsClosing] = useState(false);
     const supabase = createClient();
     const searchParams = useSearchParams();
     const chatId = searchParams.get("chatId");
@@ -210,11 +211,66 @@ export default function ChatWindow() {
         };
     }, [attachmentPreview]);
 
-    const handoverRequested = messages.some((message) => message.payload?.handover);
+    const handoverRequested =
+        Boolean(chat?.requested_handoff) ||
+        messages.some((message) => message.payload?.handover);
     const canSend = Boolean(messageInput.trim() || captionInput.trim() || attachment);
 
     const onEmojiClick = (emojiData: EmojiClickData) => {
         setMessageInput((prev) => prev + emojiData.emoji);
+    };
+
+    const handleConcludeConversation = async () => {
+        if (!chat) return;
+        try {
+            setIsClosing(true);
+            const nowIso = new Date().toISOString();
+
+            if (chat.active_session_id) {
+                const { error: sessionError } = await supabase
+                    .from("chat_sessions")
+                    .update({
+                        status: "closed",
+                        closed_at: nowIso,
+                        updated_at: nowIso,
+                    })
+                    .eq("id", chat.active_session_id);
+                if (sessionError) {
+                    throw sessionError;
+                }
+            }
+
+            const { error: chatError } = await supabase
+                .from("chats")
+                .update({
+                    requested_handoff: false,
+                    active_session_id: null,
+                    last_session_closed_at: nowIso,
+                    updated_at: nowIso,
+                })
+                .eq("id", chat.id);
+
+            if (chatError) {
+                throw chatError;
+            }
+
+            setChat((prev) =>
+                prev
+                    ? {
+                        ...prev,
+                        requested_handoff: false,
+                        active_session_id: null,
+                        updated_at: nowIso,
+                    }
+                    : prev
+            );
+            toast.success("Conversación concluida");
+        } catch (err) {
+            console.error("Error concluyendo conversación:", err);
+            toast.error("No se pudo concluir la conversación");
+        } finally {
+            setIsClosing(false);
+        }
     };
 
     if (!chatId) {
@@ -269,13 +325,27 @@ export default function ChatWindow() {
                     </div>
                 </div>
                 <div className="flex items-center gap-1">
+                    {handoverRequested && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-3 py-1 text-xs font-medium border border-amber-200">
+                            <Hand className="h-4 w-4" />
+                            En espera de agente
+                        </span>
+                    )}
                     <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
                         <Phone className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
                         <Video className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isClosing}
+                        onClick={handleConcludeConversation}
+                    >
+                        Concluir conversación
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" aria-label="Más opciones">
                         <MoreVertical className="h-4 w-4" />
                     </Button>
                 </div>

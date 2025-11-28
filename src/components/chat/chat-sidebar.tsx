@@ -8,7 +8,7 @@ import { cn } from "@/src/lib/utils";
 import { createClient } from "@/src/lib/supabase/client";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { Plus, Search } from "lucide-react";
+import { Hand, Plus, Search } from "lucide-react";
 import { Chat } from "@/src/types/chat";
 
 export default function ChatSidebar() {
@@ -135,9 +135,14 @@ export default function ChatSidebar() {
                                 )}>
                                     {chat.name || chat.phone_number}
                                 </span>
-                                <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
-                                    {chat.updated_at && format(new Date(chat.updated_at), "HH:mm")}
-                                </span>
+                                <div className="flex items-center gap-1">
+                                    {chat.requested_handoff && (
+                                        <Hand className="h-4 w-4 text-amber-500 shrink-0" aria-label="Handoff solicitado" />
+                                    )}
+                                    <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
+                                        {chat.updated_at && format(new Date(chat.updated_at), "HH:mm")}
+                                    </span>
+                                </div>
                             </div>
                             <p className="text-xs text-muted-foreground truncate mt-1">
                                 {chat.phone_number}

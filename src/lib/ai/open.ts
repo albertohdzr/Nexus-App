@@ -2,12 +2,21 @@ import OpenAI from "openai";
 
 type ReasoningEffort = "low" | "medium" | "high";
 
+type ResponseTool = {
+  type: "function";
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown> | null;
+  strict?: boolean;
+};
+
 type CreateResponseOptions = {
   input: string;
   conversationId?: string;
   model?: string;
   instructions?: string;
   reasoningEffort?: ReasoningEffort;
+  tools?: ResponseTool[];
 };
 
 type ConversationMetadata = Record<string, string>;
@@ -31,11 +40,21 @@ const createResponse = async ({
   model,
   instructions,
   reasoningEffort,
+  tools,
 }: CreateResponseOptions) => {
   return client.responses.create({
     model: model ?? DEFAULT_MODEL,
     instructions: instructions ?? DEFAULT_INSTRUCTIONS,
     input,
+    ...(tools?.length
+      ? {
+          tools: tools.map((tool) => ({
+            ...tool,
+            strict: tool.strict ?? true,
+            parameters: tool.parameters ?? {},
+          })),
+        }
+      : {}),
     ...(conversationId ? { conversation: conversationId } : {}),
   });
 };
@@ -79,4 +98,9 @@ export const openAIService = {
   listConversationItems,
 };
 
-export type { ConversationMetadata, CreateResponseOptions, ReasoningEffort };
+export type {
+  ConversationMetadata,
+  CreateResponseOptions,
+  ReasoningEffort,
+  ResponseTool,
+};

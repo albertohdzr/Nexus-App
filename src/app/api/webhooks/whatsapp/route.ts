@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { openAIService } from "@/src/lib/ai/open";
+import { openAIService, type ResponseTool } from "@/src/lib/ai/open";
 import { sendWhatsAppText } from "@/src/lib/whatsapp";
 import { uploadToStorage } from "@/src/lib/storage";
 import { WhatsAppValue } from "@/src/types/whatsapp";
@@ -12,12 +12,35 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my_secure_token";
 const SESSION_TIMEOUT_MS = 60_000;
+const HANDOFF_RESPONSE_TEXT = "Perfecto, en un momento una persona lo contactará.";
+const HANDOFF_TOOL: ResponseTool[] = [
+  {
+    type: "function",
+    name: "request_handoff",
+    description: "Usa esta función si el usuario pide hablar con un humano o un agente.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description: "Breve razón o frase que resume la solicitud del usuario.",
+        },
+      },
+      required: ["reason"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+];
+const HANDOFF_INSTRUCTIONS =
+  "Si el usuario pide hablar con una persona/humano/agente, llama a la función request_handoff y no respondas directamente.";
 
 type ChatRecord = {
   id: string;
   name: string | null;
   organization_id: string | null;
   active_session_id?: string | null;
+  requested_handoff?: boolean | null;
 };
 
 type ChatSessionRecord = {
@@ -27,6 +50,7 @@ type ChatSessionRecord = {
   last_response_at: string | null;
   updated_at: string | null;
   created_at: string | null;
+  ai_enabled?: boolean | null;
 };
 
 const getLastSessionActivity = (session: ChatSessionRecord) => {
@@ -36,6 +60,9 @@ const getLastSessionActivity = (session: ChatSessionRecord) => {
 };
 
 const isSessionExpired = (session: ChatSessionRecord) => {
+  if (session.ai_enabled === false || session.status === "handoff") {
+    return false;
+  }
   const lastActivity = getLastSessionActivity(session);
   return lastActivity
     ? Date.now() - lastActivity > SESSION_TIMEOUT_MS
@@ -90,12 +117,16 @@ const resolveChatSession = async ({
   if (chat.active_session_id) {
     const { data: session, error } = await supabase
       .from("chat_sessions")
-      .select("id, status, conversation_id, last_response_at, updated_at, created_at")
+      .select("id, status, conversation_id, last_response_at, updated_at, created_at, ai_enabled")
       .eq("id", chat.active_session_id)
       .maybeSingle();
 
     if (error) {
       console.error("Error fetching active chat session", error);
+    }
+
+    if (session?.status === "handoff") {
+      return session;
     }
 
     if (session?.status === "active" && !isSessionExpired(session)) {
@@ -107,6 +138,41 @@ const resolveChatSession = async ({
 
   if (activeSession) {
     return activeSession;
+  }
+
+  if (chat.requested_handoff) {
+    const nowIso = new Date().toISOString();
+    const { data: handoffSession, error: handoffError } = await supabase
+      .from("chat_sessions")
+      .insert({
+        organization_id: chat.organization_id,
+        chat_id: chat.id,
+        status: "handoff",
+        ai_enabled: false,
+        last_response_at: nowIso,
+        updated_at: nowIso,
+      })
+      .select("id, status, conversation_id, last_response_at, updated_at, created_at, ai_enabled")
+      .single();
+
+    if (handoffError) {
+      console.error("Error creating handoff session", handoffError);
+      return null;
+    }
+
+    const { error: chatLinkError } = await supabase
+      .from("chats")
+      .update({
+        active_session_id: handoffSession.id,
+        updated_at: nowIso,
+      })
+      .eq("id", chat.id);
+
+    if (chatLinkError) {
+      console.error("Error linking handoff session to chat", chatLinkError);
+    }
+
+    return handoffSession;
   }
 
   try {
@@ -131,8 +197,9 @@ const resolveChatSession = async ({
         conversation_id: conversation.id,
         last_response_at: nowIso,
         updated_at: nowIso,
+        ai_enabled: true,
       })
-      .select("id, status, conversation_id, last_response_at, updated_at, created_at")
+      .select("id, status, conversation_id, last_response_at, updated_at, created_at, ai_enabled")
       .single();
 
     if (sessionCreateError) {
@@ -212,6 +279,29 @@ const extractResponseText = (response: unknown) => {
   return null;
 };
 
+const extractFunctionCalls = (response: unknown) => {
+  const responseAny = response as { output?: unknown[] } | null | undefined;
+  const outputs = Array.isArray(responseAny?.output) ? responseAny?.output : [];
+
+  return outputs
+    .map((output) => {
+      if (output && typeof output === "object" && (output as { type?: string }).type === "function_call") {
+        const typedOutput = output as {
+          name?: string;
+          arguments?: string | Record<string, unknown>;
+          call_id?: string;
+        };
+        return typedOutput;
+      }
+      return null;
+    })
+    .filter(Boolean) as Array<{
+    name?: string;
+    arguments?: string | Record<string, unknown>;
+    call_id?: string;
+  }>;
+};
+
 const handleAIResponse = async ({
   chat,
   organizationName,
@@ -227,13 +317,92 @@ const handleAIResponse = async ({
   phoneNumberId: string;
   latestUserMessage: string;
 }) => {
+  const handleHandoff = async (aiResponseId?: string) => {
+    const nowIso = new Date().toISOString();
+    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+
+    if (!accessToken) {
+      console.warn("WHATSAPP_ACCESS_TOKEN missing; handoff response skipped.");
+      return;
+    }
+
+    const { error: sessionUpdateError } = session?.id
+      ? await supabase
+          .from("chat_sessions")
+          .update({
+            ai_enabled: false,
+            status: "handoff",
+            updated_at: nowIso,
+          })
+          .eq("id", session.id)
+      : { error: null };
+
+    if (sessionUpdateError) {
+      console.error("Error updating chat session to handoff", sessionUpdateError);
+    }
+
+    const { error: chatUpdateError } = await supabase
+      .from("chats")
+      .update({
+        requested_handoff: true,
+        active_session_id: session?.id ?? chat.active_session_id ?? null,
+        updated_at: nowIso,
+      })
+      .eq("id", chat.id);
+
+    if (chatUpdateError) {
+      console.error("Error marking chat handoff", chatUpdateError);
+    }
+
+    const { messageId, error } = await sendWhatsAppText({
+      phoneNumberId,
+      accessToken,
+      to: waId,
+      body: HANDOFF_RESPONSE_TEXT,
+    });
+
+    if (error) {
+      console.error("WhatsApp send error during handoff:", error);
+      return;
+    }
+
+    const { error: insertError } = await supabase.from("messages").insert({
+      chat_id: chat.id,
+      chat_session_id: session?.id ?? null,
+      response_id: aiResponseId ?? null,
+      wa_message_id: messageId,
+      body: HANDOFF_RESPONSE_TEXT,
+      type: "text",
+      status: "sent",
+      sent_at: nowIso,
+      sender_name: "Bot",
+      payload: {
+        handover: true,
+        reason: "user_requested_handoff",
+        conversation_id: session?.conversation_id,
+      },
+      created_at: nowIso,
+    });
+
+    if (insertError) {
+      console.error("Error saving handoff reply:", insertError);
+    }
+  };
+
   if (!process.env.WHATSAPP_ACCESS_TOKEN) {
     console.warn("WHATSAPP_ACCESS_TOKEN missing; bot reply skipped.");
     return;
   }
 
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+
   if (!session?.conversation_id) {
     console.warn("No active chat session found; skipping AI response.");
+    return;
+  }
+
+  if (session.ai_enabled === false) {
+    console.warn("Chat session has AI disabled (handoff requested); skipping AI response.");
     return;
   }
 
@@ -241,7 +410,16 @@ const handleAIResponse = async ({
     const aiResponse = await openAIService.createResponse({
       input: latestUserMessage,
       conversationId: session.conversation_id,
+      tools: HANDOFF_TOOL,
+      instructions: HANDOFF_INSTRUCTIONS,
     });
+
+    const functionCalls = extractFunctionCalls(aiResponse);
+    const handoffCall = functionCalls.find((call) => call.name === "request_handoff");
+    if (handoffCall) {
+      await handleHandoff(aiResponse.id);
+      return;
+    }
 
     const replyText = extractResponseText(aiResponse);
     if (!replyText) {
@@ -251,7 +429,7 @@ const handleAIResponse = async ({
 
     const { messageId, error } = await sendWhatsAppText({
       phoneNumberId,
-      accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+      accessToken,
       to: waId,
       body: replyText,
     });
@@ -449,6 +627,7 @@ export async function POST(request: Request) {
           name: chatData.name ?? null,
           organization_id: chatData.organization_id ?? orgData.id,
           active_session_id: (chatData as { active_session_id?: string | null })?.active_session_id ?? null,
+          requested_handoff: (chatData as { requested_handoff?: boolean | null })?.requested_handoff ?? false,
         };
 
         const session = await resolveChatSession({

@@ -38,4 +38,6 @@ export type Chat = {
   organization_id?: string;
   updated_at?: string;
   last_message?: string;
+  requested_handoff?: boolean;
+  active_session_id?: string | null;
 };
