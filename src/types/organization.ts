@@ -8,6 +8,11 @@ export type Organization = {
   created_at: string;
   updated_at: string;
   plan?: string | null;
+  bot_name?: string | null;
+  bot_instructions?: string | null;
+  bot_tone?: string | null;
+  bot_language?: string | null;
+  bot_model?: string | null;
 };
 
 export type OrganizationTableRow = Pick<
