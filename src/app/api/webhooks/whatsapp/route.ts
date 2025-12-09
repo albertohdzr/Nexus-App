@@ -13,6 +13,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my_secure_token";
 const SESSION_TIMEOUT_MS = 60_000;
+const LEAD_CONFIRMATION_TEXT = "Gracias, nos comunicaremos contigo más adelante.";
 
 type ChatRecord = {
   id: string;
@@ -20,6 +21,7 @@ type ChatRecord = {
   organization_id: string | null;
   active_session_id?: string | null;
   requested_handoff?: boolean | null;
+  phone_number?: string | null;
 };
 
 type ChatSessionRecord = {
@@ -30,6 +32,23 @@ type ChatSessionRecord = {
   updated_at: string | null;
   created_at: string | null;
   ai_enabled?: boolean | null;
+};
+
+type CreateLeadArgs = {
+  contact_phone: string;
+  contact_email?: string | null;
+  contact_first_name?: string | null;
+  contact_last_name_paternal?: string | null;
+  student_first_name: string;
+  student_last_name_paternal: string;
+  student_middle_name?: string | null;
+  student_last_name_maternal?: string | null;
+  student_dob?: string | null;
+  grade_interest: string;
+  school_year?: string | null;
+  campus?: string | null;
+  summary: string;
+  source?: string | null;
 };
 
 const getLastSessionActivity = (session: ChatSessionRecord) => {
@@ -84,6 +103,149 @@ const closeChatSession = async ({
   }
 };
 
+const splitName = (fullName?: string | null) => {
+  if (!fullName) {
+    return { first: null, lastPaternal: null };
+  }
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return { first: parts[0], lastPaternal: null };
+  }
+  const first = parts[0];
+  const lastPaternal = parts.slice(1).join(" ");
+  return { first, lastPaternal };
+};
+
+const ensureContact = async ({
+  organizationId,
+  waId,
+  phone,
+  name,
+  email,
+}: {
+  organizationId: string;
+  waId?: string | null;
+  phone?: string | null;
+  name?: string | null;
+  email?: string | null;
+}) => {
+  if (!phone) {
+    throw new Error("contact_phone is required to create a lead");
+  }
+
+  const { data: existingContact, error: contactFetchError } = await supabase
+    .from("crm_contacts")
+    .select("id, phone, email")
+    .eq("organization_id", organizationId)
+    .eq("whatsapp_wa_id", waId || "")
+    .maybeSingle();
+
+  if (contactFetchError) {
+    console.error("Error fetching contact", contactFetchError);
+  }
+
+  const { first, lastPaternal } = splitName(name);
+
+  if (existingContact?.id) {
+    const { error: updateError } = await supabase
+      .from("crm_contacts")
+      .update({
+        phone: existingContact.phone || phone,
+        email: existingContact.email || email,
+      })
+      .eq("id", existingContact.id);
+
+    if (updateError) {
+      console.error("Error updating existing contact", updateError);
+    }
+
+    return existingContact.id as string;
+  }
+
+  const { data: newContact, error: insertError } = await supabase
+    .from("crm_contacts")
+    .insert({
+      organization_id: organizationId,
+      first_name: first || "Contacto",
+      last_name_paternal: lastPaternal,
+      phone,
+      email,
+      whatsapp_wa_id: waId,
+      source: "whatsapp",
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !newContact?.id) {
+    console.error("Error creating contact", insertError);
+    throw new Error("Failed to create contact");
+  }
+
+  return newContact.id as string;
+};
+
+const createLeadRecord = async ({
+  organizationId,
+  chatId,
+  waId,
+  contactId,
+  args,
+}: {
+  organizationId: string;
+  chatId: string;
+  waId: string;
+  contactId: string;
+  args: CreateLeadArgs;
+}) => {
+  const leadPayload = {
+    organization_id: organizationId,
+    status: "new",
+    source: args.source || "whatsapp",
+    student_first_name: args.student_first_name,
+    student_middle_name: args.student_middle_name,
+    student_last_name_paternal: args.student_last_name_paternal,
+    student_last_name_maternal: args.student_last_name_maternal,
+    student_dob: args.student_dob || null,
+    grade_interest: args.grade_interest,
+    school_year: args.school_year,
+    campus: args.campus,
+    contact_first_name: args.contact_first_name || "Contacto",
+    contact_last_name_paternal: args.contact_last_name_paternal,
+    contact_email: args.contact_email,
+    contact_phone: args.contact_phone,
+    contact_id: contactId,
+    wa_chat_id: chatId,
+    wa_id: waId,
+    ai_summary: args.summary,
+    metadata: { source: "whatsapp", tool: "create_lead" },
+  };
+
+  const { data, error } = await supabase
+    .from("leads")
+    .insert(leadPayload)
+    .select("id")
+    .single();
+
+  if (error || !data?.id) {
+    console.error("Error creating lead", error);
+    throw new Error("Failed to create lead");
+  }
+
+  return data.id as string;
+};
+
+const parseFunctionArgs = (args: string | Record<string, unknown> | undefined) => {
+  if (!args) return {};
+  if (typeof args === "string") {
+    try {
+      return JSON.parse(args);
+    } catch (err) {
+      console.error("Failed to parse function call args", err);
+      return {};
+    }
+  }
+  return args;
+};
 const resolveChatSession = async ({
   chat,
   organizationName,
@@ -209,18 +371,28 @@ const resolveChatSession = async ({
 
 const handleAIResponse = async ({
   chat,
-  organizationName,
+  organization,
   session,
   waId,
   phoneNumberId,
   latestUserMessage,
+  contactName,
 }: {
   chat: ChatRecord;
-  organizationName?: string | null;
+  organization: {
+    id: string;
+    name?: string | null;
+    bot_name?: string | null;
+    bot_instructions?: string | null;
+    bot_tone?: string | null;
+    bot_language?: string | null;
+    bot_model?: string | null;
+  };
   session: ChatSessionRecord | null;
   waId: string;
   phoneNumberId: string;
   latestUserMessage: string;
+  contactName?: string | null;
 }) => {
   const handleHandoff = async (aiResponseId?: string) => {
     const nowIso = new Date().toISOString();
@@ -315,11 +487,114 @@ const handleAIResponse = async ({
     const chatbotReply = await generateChatbotReply({
       input: latestUserMessage,
       conversationId: session.conversation_id,
+      context: {
+        organizationId: organization.id,
+        organizationName: organization.name,
+        botName: organization.bot_name,
+        botInstructions: organization.bot_instructions,
+        botTone: organization.bot_tone,
+        botLanguage: organization.bot_language,
+        botModel: organization.bot_model,
+        waId,
+        chatId: chat.id,
+        phoneNumber: chat.phone_number,
+      },
     });
 
     if (chatbotReply.handoffRequested) {
       await handleHandoff((chatbotReply.aiResponse as { id?: string })?.id);
       return;
+    }
+
+    const leadCall = chatbotReply.functionCalls.find((call) => call.name === "create_lead");
+    if (leadCall) {
+      const parsedArgs = parseFunctionArgs(leadCall.arguments) as Partial<CreateLeadArgs>;
+      const contactPhone =
+        (parsedArgs.contact_phone as string | undefined) || chat.phone_number || waId;
+
+      if (!contactPhone || !parsedArgs.student_first_name || !parsedArgs.student_last_name_paternal || !parsedArgs.grade_interest) {
+        console.warn("Lead tool invoked without required fields");
+        return;
+      }
+
+      const leadArgs: CreateLeadArgs = {
+        contact_phone: contactPhone,
+        contact_email: parsedArgs.contact_email || null,
+        contact_first_name: parsedArgs.contact_first_name || contactName || "Contacto",
+        contact_last_name_paternal: parsedArgs.contact_last_name_paternal || null,
+        student_first_name: parsedArgs.student_first_name,
+        student_last_name_paternal: parsedArgs.student_last_name_paternal,
+        student_middle_name: parsedArgs.student_middle_name || null,
+        student_last_name_maternal: parsedArgs.student_last_name_maternal || null,
+        student_dob: parsedArgs.student_dob || null,
+        grade_interest: parsedArgs.grade_interest,
+        school_year: parsedArgs.school_year || null,
+        campus: parsedArgs.campus || null,
+        summary: parsedArgs.summary || "Resumen no proporcionado",
+        source: parsedArgs.source || "whatsapp",
+      };
+
+      try {
+        const contactId = await ensureContact({
+          organizationId: organization.id,
+          waId,
+          phone: leadArgs.contact_phone,
+          name: leadArgs.contact_first_name,
+          email: leadArgs.contact_email,
+        });
+
+        const leadId = await createLeadRecord({
+          organizationId: organization.id,
+          chatId: chat.id,
+          waId,
+          contactId,
+          args: leadArgs,
+        });
+
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: LEAD_CONFIRMATION_TEXT,
+        });
+
+        if (error) {
+          console.error("WhatsApp send error during lead creation:", error);
+          return;
+        }
+
+        const nowIso = new Date().toISOString();
+        const { error: insertError } = await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session.id,
+          response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+          wa_message_id: messageId,
+          body: LEAD_CONFIRMATION_TEXT,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            model: chatbotReply.model,
+            conversation_id: session.conversation_id,
+            organization: organization.name,
+            response_message_id: chatbotReply.responseMessageId,
+            lead_id: leadId,
+            tool: "create_lead",
+            lead_summary: leadArgs.summary,
+          },
+          created_at: nowIso,
+        });
+
+        if (insertError) {
+          console.error("Error saving lead confirmation reply:", insertError);
+        }
+
+        return;
+      } catch (leadErr) {
+        console.error("Error handling lead creation", leadErr);
+        return;
+      }
     }
 
     if (!chatbotReply.replyText) {
@@ -351,12 +626,12 @@ const handleAIResponse = async ({
       status: "sent",
       sent_at: nowIso,
       sender_name: "Bot",
-      payload: {
-        model: chatbotReply.model,
-        conversation_id: session.conversation_id,
-        organization: organizationName,
-        response_message_id: chatbotReply.responseMessageId,
-      },
+    payload: {
+      model: chatbotReply.model,
+      conversation_id: session.conversation_id,
+      organization: organization.name,
+      response_message_id: chatbotReply.responseMessageId,
+    },
       created_at: nowIso,
     });
 
@@ -481,11 +756,11 @@ export async function POST(request: Request) {
         }
 
         // 1. Find Organization
-        const { data: orgData, error: orgError } = await supabase
-          .from("organizations")
-          .select("id, name")
-          .eq("phone_number_id", phoneNumberId)
-          .single();
+          const { data: orgData, error: orgError } = await supabase
+            .from("organizations")
+            .select("id, name, bot_name, bot_instructions, bot_tone, bot_language, bot_model")
+            .eq("phone_number_id", phoneNumberId)
+            .single();
 
         if (orgError || !orgData) {
           console.error("Organization not found for phone_number_id:", phoneNumberId);
@@ -514,13 +789,14 @@ export async function POST(request: Request) {
           return new NextResponse("Internal Server Error", { status: 500 });
         }
 
-        const chatRecord: ChatRecord = {
-          id: chatData.id,
-          name: chatData.name ?? null,
-          organization_id: chatData.organization_id ?? orgData.id,
-          active_session_id: (chatData as { active_session_id?: string | null })?.active_session_id ?? null,
-          requested_handoff: (chatData as { requested_handoff?: boolean | null })?.requested_handoff ?? false,
-        };
+          const chatRecord: ChatRecord = {
+            id: chatData.id,
+            name: chatData.name ?? null,
+            organization_id: chatData.organization_id ?? orgData.id,
+            active_session_id: (chatData as { active_session_id?: string | null })?.active_session_id ?? null,
+            requested_handoff: (chatData as { requested_handoff?: boolean | null })?.requested_handoff ?? false,
+            phone_number: chatData.phone_number ?? null,
+          };
 
         const session = await resolveChatSession({
           chat: chatRecord,
@@ -634,16 +910,25 @@ export async function POST(request: Request) {
           console.error("Error inserting message:", messageError);
         }
 
-        if (message.type === "text" && message.text?.body) {
-          await handleAIResponse({
-            chat: chatRecord,
-            organizationName: orgData.name,
-            session,
-            waId,
-            phoneNumberId,
-            latestUserMessage: message.text.body,
-          });
-        }
+          if (message.type === "text" && message.text?.body) {
+            await handleAIResponse({
+              chat: chatRecord,
+              organization: {
+                id: orgData.id,
+                name: orgData.name,
+                bot_name: orgData.bot_name,
+                bot_instructions: orgData.bot_instructions,
+                bot_tone: orgData.bot_tone,
+                bot_language: orgData.bot_language,
+                bot_model: orgData.bot_model,
+              },
+              session,
+              waId,
+              phoneNumberId,
+              latestUserMessage: message.text.body,
+              contactName: name,
+            });
+          }
       }
 
       // Handle status updates for outgoing messages
