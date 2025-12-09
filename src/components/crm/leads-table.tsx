@@ -1,473 +1,365 @@
 "use client"
 
-import * as React from "react"
-import {
-    ColumnDef,
-    ColumnFiltersState,
-    SortingState,
-    VisibilityState,
-    flexRender,
-    getCoreRowModel,
-    getFilteredRowModel,
-    getPaginationRowModel,
-    getSortedRowModel,
-    useReactTable,
-} from "@tanstack/react-table"
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/src/components/ui/table"
-import { Button } from "@/src/components/ui/button"
-import { Checkbox } from "@/src/components/ui/checkbox"
+import { useActionState, useMemo, useState } from "react"
+import Link from "next/link"
+import { Clock3, Mail, MessageSquare, Phone } from "lucide-react"
 import { Badge } from "@/src/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar"
+import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
+import { Separator } from "@/src/components/ui/separator"
 import {
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuTrigger,
-} from "@/src/components/ui/dropdown-menu"
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/src/components/ui/sheet"
 import {
-    LayoutList,
-    LayoutGrid,
-    Filter,
-    Download,
-    Plus,
-    Phone,
-    MoreHorizontal,
-    Facebook,
-    Linkedin,
-    Instagram,
-    Globe
-} from "lucide-react"
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/src/components/ui/table"
+import { Avatar, AvatarFallback } from "@/src/components/ui/avatar"
+import { cn } from "@/src/lib/utils"
+import { LeadFollowUpForm } from "@/src/components/crm/lead-follow-up-form"
+import {
+  STATUS_STYLES,
+  buildDefaultFollowUp,
+  formatRelativeDate,
+  getLeadSummary,
+  getSessions,
+  statusLabel,
+} from "@/src/lib/lead"
+import type { FollowUpActionState, SendLeadFollowUpAction } from "@/src/app/(dashboard)/crm/leads/actions"
+import type { LeadRecord } from "@/src/types/lead"
 
-// Mock Data
-const data: Lead[] = [
-    {
-        id: "1",
-        name: "Jenny Wilson",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Redesign mobile app",
-        activity: "Sep 12 at 09:10 AM",
-        status: "Cold Lead",
-        created: "1 month ago",
-        source: "Dribbble",
-        sourceIcon: "dribbble"
-    },
-    {
-        id: "2",
-        name: "David Lane",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Full Website Design",
-        activity: "Sep 12 at 10:15 AM",
-        status: "Hot Lead",
-        created: "2 months ago",
-        source: "Instagram",
-        sourceIcon: "instagram"
-    },
-    {
-        id: "3",
-        name: "Michael Smith",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Dashboard & Admin Panel",
-        activity: "Sep 12 at 11:20 AM",
-        status: "Warm Lead",
-        created: "3 months ago",
-        source: "Google",
-        sourceIcon: "google"
-    },
-    {
-        id: "4",
-        name: "Chris Lee",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Landing Page Design",
-        activity: "Sep 12 at 12:25 PM",
-        status: "Cold Lead",
-        created: "4 months ago",
-        source: "Facebook",
-        sourceIcon: "facebook"
-    },
-    {
-        id: "5",
-        name: "Emily Johnson",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Branding & Identity",
-        activity: "Sep 12 at 01:30 PM",
-        status: "Hot Lead",
-        created: "5 months ago",
-        source: "Dribbble",
-        sourceIcon: "dribbble"
-    },
-    {
-        id: "6",
-        name: "Steven Davis",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Marketing Website Design",
-        activity: "Sep 12 at 02:35 PM",
-        status: "Warm Lead",
-        created: "6 months ago",
-        source: "Google",
-        sourceIcon: "google"
-    },
-    {
-        id: "7",
-        name: "Alex Jaka",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Mobile Game UI",
-        activity: "Sep 12 at 03:40 PM",
-        status: "Cold Lead",
-        created: "7 months ago",
-        source: "Dribbble",
-        sourceIcon: "dribbble"
-    },
-    {
-        id: "8",
-        name: "James Brown",
-        avatar: "https://github.com/shadcn.png",
-        subject: "SaaS Product Design",
-        activity: "Sep 12 at 04:45 PM",
-        status: "Hot Lead",
-        created: "8 months ago",
-        source: "Facebook",
-        sourceIcon: "facebook"
-    },
-    {
-        id: "9",
-        name: "James kaka",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Portfolio Website",
-        activity: "Sep 12 at 05:50 PM",
-        status: "Warm Lead",
-        created: "9 months ago",
-        source: "LinkedIn",
-        sourceIcon: "linkedin"
-    },
-    {
-        id: "10",
-        name: "Thomas hodai",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Onboarding Flow Design",
-        activity: "Sep 13 at 09:55 AM",
-        status: "Cold Lead",
-        created: "10 months ago",
-        source: "Instagram",
-        sourceIcon: "instagram"
-    },
-    {
-        id: "11",
-        name: "Linda Martinez",
-        avatar: "https://github.com/shadcn.png",
-        subject: "Chat & Messaging App UI",
-        activity: "Sep 13 at 11:00 AM",
-        status: "Hot Lead",
-        created: "11 months ago",
-        source: "LinkedIn",
-        sourceIcon: "linkedin"
-    },
-]
-
-export type Lead = {
-    id: string
-    name: string
-    avatar: string
-    subject: string
-    activity: string
-    status: "Cold Lead" | "Hot Lead" | "Warm Lead"
-    created: string
-    source: string
-    sourceIcon: string
+type LeadsTableProps = {
+  leads: LeadRecord[]
+  sendFollowUpAction: SendLeadFollowUpAction
 }
 
-export const columns: ColumnDef<Lead>[] = [
-    {
-        id: "select",
-        header: ({ table }) => (
-            <Checkbox
-                checked={
-                    table.getIsAllPageRowsSelected() ||
-                    (table.getIsSomePageRowsSelected() && "indeterminate")
-                }
-                onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-                aria-label="Select all"
-            />
-        ),
-        cell: ({ row }) => (
-            <Checkbox
-                checked={row.getIsSelected()}
-                onCheckedChange={(value) => row.toggleSelected(!!value)}
-                aria-label="Select row"
-            />
-        ),
-        enableSorting: false,
-        enableHiding: false,
-    },
-    {
-        accessorKey: "name",
-        header: "Leads",
-        cell: ({ row }) => (
-            <div className="flex items-center gap-3">
-                <Avatar className="h-8 w-8">
-                    <AvatarImage src={row.original.avatar} alt={row.original.name} />
-                    <AvatarFallback>{row.original.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <span className="font-medium">{row.original.name}</span>
-            </div>
-        ),
-    },
-    {
-        accessorKey: "subject",
-        header: "Subject",
-        cell: ({ row }) => <div className="text-muted-foreground">{row.original.subject}</div>,
-    },
-    {
-        accessorKey: "activity",
-        header: "Activities",
-        cell: ({ row }) => (
-            <div className="flex items-center gap-2 text-muted-foreground">
-                <Phone className="h-3 w-3" />
-                <span>{row.original.activity}</span>
-            </div>
-        ),
-    },
-    {
-        accessorKey: "status",
-        header: "Status",
-        cell: ({ row }) => {
-            const status = row.original.status
-            let variant = "default"
-            let className = ""
+export function LeadsTable({ leads, sendFollowUpAction }: LeadsTableProps) {
+  const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null)
+  const [search, setSearch] = useState("")
 
-            if (status === "Cold Lead") {
-                className = "bg-blue-100 text-blue-700 hover:bg-blue-100/80 border-none shadow-none"
-            } else if (status === "Hot Lead") {
-                className = "bg-red-100 text-red-700 hover:bg-red-100/80 border-none shadow-none"
-            } else if (status === "Warm Lead") {
-                className = "bg-yellow-100 text-yellow-700 hover:bg-yellow-100/80 border-none shadow-none"
-            }
-
-            return (
-                <Badge variant="outline" className={className}>
-                    {status}
-                </Badge>
-            )
-        },
-    },
-    {
-        accessorKey: "created",
-        header: "Created",
-        cell: ({ row }) => (
-            <div className="flex items-center gap-2 text-muted-foreground">
-                <span className="text-xs">🕒</span>
-                <span>{row.original.created}</span>
-            </div>
-        ),
-    },
-    {
-        accessorKey: "source",
-        header: "Sources",
-        cell: ({ row }) => {
-            const icon = row.original.sourceIcon
-            let Icon = Globe
-            let color = "text-gray-500"
-
-            if (icon === "facebook") { Icon = Facebook; color = "text-blue-600" }
-            else if (icon === "linkedin") { Icon = Linkedin; color = "text-blue-700" }
-            else if (icon === "instagram") { Icon = Instagram; color = "text-pink-600" }
-            else if (icon === "dribbble") { Icon = Globe; color = "text-pink-500" } // Dribbble icon not in lucide basic set, using Globe
-            else if (icon === "google") { Icon = Globe; color = "text-red-500" }
-
-            return (
-                <div className="flex items-center gap-2">
-                    <Icon className={`h-3 w-3 ${color}`} />
-                    <span>{row.original.source}</span>
-                </div>
-            )
-        },
-    },
-]
-
-export function LeadsTable() {
-    const [sorting, setSorting] = React.useState<SortingState>([])
-    const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
-    const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
-    const [rowSelection, setRowSelection] = React.useState({})
-
-    const table = useReactTable({
-        data,
-        columns,
-        onSortingChange: setSorting,
-        onColumnFiltersChange: setColumnFilters,
-        getCoreRowModel: getCoreRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
-        getSortedRowModel: getSortedRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
-        onColumnVisibilityChange: setColumnVisibility,
-        onRowSelectionChange: setRowSelection,
-        state: {
-            sorting,
-            columnFilters,
-            columnVisibility,
-            rowSelection,
-        },
+  const filteredLeads = useMemo(() => {
+    const term = search.toLowerCase().trim()
+    if (!term) return leads
+    return leads.filter((lead) => {
+      const haystack = [
+        lead.student_name,
+        lead.contact_full_name,
+        lead.contact_email,
+        lead.contact_phone,
+        lead.grade_interest,
+        lead.source,
+        lead.status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+      return haystack.includes(term)
     })
+  }, [leads, search])
 
-    return (
-        <div className="w-full space-y-4">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-lg">
-                    <Button variant="ghost" size="sm" className="h-8 bg-background shadow-sm">
-                        <LayoutList className="h-4 w-4 mr-2" />
-                        List
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 text-muted-foreground">
-                        <LayoutGrid className="h-4 w-4 mr-2" />
-                        Grid
-                    </Button>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" className="h-9">
-                        <Filter className="h-4 w-4 mr-2" />
-                        Filter
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-9">
-                        <Download className="h-4 w-4 mr-2" />
-                        Export
-                    </Button>
-                    <Button size="sm" className="h-9 bg-primary text-primary-foreground hover:bg-primary/90">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add New Lead
-                    </Button>
-                </div>
-            </div>
-
-            <div className="rounded-xl border bg-card">
-                <Table>
-                    <TableHeader>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id} className="hover:bg-transparent">
-                                {headerGroup.headers.map((header) => {
-                                    return (
-                                        <TableHead key={header.id} className="h-10 text-xs font-medium">
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                    header.column.columnDef.header,
-                                                    header.getContext()
-                                                )}
-                                        </TableHead>
-                                    )
-                                })}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        {table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    data-state={row.getIsSelected() && "selected"}
-                                    className="h-16"
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext()
-                                            )}
-                                        </TableCell>
-                                    ))}
-                                </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell
-                                    colSpan={columns.length}
-                                    className="h-24 text-center"
-                                >
-                                    No results.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-
-            <div className="flex items-center justify-between px-2">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>Show</span>
-                    <Button variant="outline" size="sm" className="h-8 w-12 p-0">
-                        11
-                    </Button>
-                    <span>Leads per page</span>
-                </div>
-
-                <div className="flex items-center gap-1">
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => table.previousPage()}
-                        disabled={!table.getCanPreviousPage()}
-                    >
-                        <span className="sr-only">Go to previous page</span>
-                        <ChevronRight className="h-4 w-4 rotate-180" />
-                    </Button>
-                    <Button variant="default" size="sm" className="h-8 w-8 p-0 bg-primary text-primary-foreground">
-                        1
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        2
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        3
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        4
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        5
-                    </Button>
-                    <span className="text-muted-foreground">...</span>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        16
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => table.nextPage()}
-                        disabled={!table.getCanNextPage()}
-                    >
-                        <span className="sr-only">Go to next page</span>
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold">Leads del CRM</h2>
+          <p className="text-sm text-muted-foreground">
+            Leads creados por el chatbot y el equipo, con resumen de sesiones.
+          </p>
         </div>
-    )
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar por nombre, grado o email..."
+          className="w-[280px]"
+        />
+      </div>
+
+      <div className="rounded-xl border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[200px]">Estudiante</TableHead>
+              <TableHead>Contacto</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead>Fuente</TableHead>
+              <TableHead className="w-[240px]">Resumen</TableHead>
+              <TableHead className="text-right">Creado</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredLeads.length ? (
+              filteredLeads.map((lead) => {
+                const sessions = getSessions(lead)
+                const latestActivity =
+                  sessions[0]?.last_response_at ||
+                  sessions[0]?.updated_at ||
+                  lead.updated_at
+                return (
+                  <TableRow key={lead.id} className="hover:bg-muted/40">
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9 border bg-muted/30">
+                          <AvatarFallback className="text-xs font-medium">
+                            {(lead.student_name || "NA")
+                              .substring(0, 2)
+                              .toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="space-y-1">
+                          <div className="font-medium leading-none">
+                            {lead.student_name || "Sin nombre"}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {lead.grade_interest || "Sin grado"}
+                            {lead.campus ? ` • ${lead.campus}` : ""}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="text-sm font-medium">
+                          {lead.contact_full_name ||
+                            lead.contact_first_name ||
+                            "Contacto"}
+                        </div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-2">
+                          {lead.contact_email ? (
+                            <>
+                              <Mail className="h-3 w-3" />
+                              <span className="truncate">
+                                {lead.contact_email}
+                              </span>
+                            </>
+                          ) : (
+                            "Sin correo"
+                          )}
+                        </div>
+                        {lead.contact_phone ? (
+                          <div className="text-xs text-muted-foreground flex items-center gap-2">
+                            <Phone className="h-3 w-3" />
+                            <span>{lead.contact_phone}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "capitalize border",
+                          STATUS_STYLES[lead.status] || "bg-muted text-foreground"
+                        )}
+                      >
+                        {statusLabel(lead.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="capitalize">
+                        {lead.source || "N/A"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-sm line-clamp-2 text-muted-foreground">
+                        {getLeadSummary(lead)}
+                      </p>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
+                        <MessageSquare className="h-3 w-3" />
+                        <span>
+                          {sessions.length} sesión{sessions.length === 1 ? "" : "es"}
+                        </span>
+                        <span>•</span>
+                        <Clock3 className="h-3 w-3" />
+                        <span>{formatRelativeDate(latestActivity)}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(lead.created_at).toLocaleDateString("es-MX")}
+                        </span>
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedLead(lead)}>
+                          Vista rápida
+                        </Button>
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/crm/leads/${lead.id}`}>Abrir página</Link>
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center text-sm">
+                  No hay leads todavía.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <LeadDetailsSheet
+        key={selectedLead?.id || "lead-sheet"}
+        lead={selectedLead}
+        onClose={() => setSelectedLead(null)}
+        sendFollowUpAction={sendFollowUpAction}
+      />
+    </div>
+  )
 }
 
-function ChevronRight({ className }: { className?: string }) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={className}
-        >
-            <path d="m9 18 6-6-6-6" />
-        </svg>
-    )
+type LeadDetailsSheetProps = {
+  lead: LeadRecord | null
+  onClose: () => void
+  sendFollowUpAction: SendLeadFollowUpAction
+}
+
+function LeadDetailsSheet({
+  lead,
+  onClose,
+  sendFollowUpAction,
+}: LeadDetailsSheetProps) {
+  const [state, formAction, pending] = useActionState<
+    FollowUpActionState,
+    FormData
+  >(sendFollowUpAction, {})
+
+  if (!lead) return null
+
+  const sessions = getSessions(lead)
+  const summary = getLeadSummary(lead)
+  const defaultMessage = buildDefaultFollowUp(lead)
+
+  return (
+    <Sheet open={Boolean(lead)} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent className="sm:max-w-xl overflow-y-auto">
+        <SheetHeader className="space-y-2">
+          <SheetTitle>{lead.student_name || "Lead"}</SheetTitle>
+          <SheetDescription>
+            Detalles del lead, resumen del chat y seguimiento por correo.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="py-4 space-y-6">
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  "capitalize border",
+                  STATUS_STYLES[lead.status] || "bg-muted text-foreground"
+                )}
+              >
+                {statusLabel(lead.status)}
+              </Badge>
+              <Badge variant="secondary" className="capitalize">
+                {lead.source || "N/A"}
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-muted-foreground">Estudiante</p>
+                <p className="font-medium">{lead.student_name || "Sin nombre"}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Grado</p>
+                <p className="font-medium">
+                  {lead.grade_interest || "No especificado"}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Contacto</p>
+                <p className="font-medium">
+                  {lead.contact_full_name ||
+                    lead.contact_first_name ||
+                    "Sin contacto"}
+                </p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Mail className="h-3 w-3" />
+                  {lead.contact_email || "Sin correo"}
+                </p>
+                {lead.contact_phone ? (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" />
+                    {lead.contact_phone}
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <p className="text-muted-foreground">Campus / ciclo</p>
+                <p className="font-medium">
+                  {lead.campus || "N/A"}
+                  {lead.school_year ? ` • ${lead.school_year}` : ""}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <Separator />
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold">Sesiones de chat</h4>
+              <Badge variant="outline">
+                {sessions.length} sesión{sessions.length === 1 ? "" : "es"}
+              </Badge>
+            </div>
+            {sessions.length ? (
+              <div className="space-y-3">
+                {sessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className="border rounded-lg p-3 bg-muted/30 space-y-1"
+                  >
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="capitalize">
+                        {statusLabel(session.status || "activa")}
+                      </span>
+                      <span>{formatRelativeDate(session.updated_at)}</span>
+                    </div>
+                    <p className="text-sm leading-relaxed">
+                      {session.summary || "Sin resumen capturado."}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No hay sesiones registradas todavía.
+              </p>
+            )}
+            <div className="rounded-lg border p-3 bg-muted/20">
+              <p className="text-xs text-muted-foreground mb-1">
+                Resumen consolidado
+              </p>
+              <p className="text-sm leading-relaxed">{summary}</p>
+            </div>
+          </section>
+
+          <Separator />
+
+          <section className="space-y-3">
+            <h4 className="text-sm font-semibold">Enviar follow up</h4>
+            <LeadFollowUpForm
+              leadId={lead.id}
+              defaultSubject={`Seguimiento de admisiones - ${lead.student_name || "Lead"
+                }`}
+              defaultMessage={defaultMessage}
+              sendFollowUpAction={sendFollowUpAction}
+            />
+          </section>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
 }
