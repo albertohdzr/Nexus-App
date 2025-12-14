@@ -34,6 +34,7 @@ export default async function LeadsPage() {
       grade_interest,
       school_year,
       campus,
+      cycle_id,
       student_first_name,
       student_middle_name,
       student_last_name_paternal,

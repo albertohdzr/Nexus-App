@@ -248,7 +248,7 @@ export const addLeadNote: AddLeadNoteAction = async (_prevState, formData) => {
 
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .select("id, organization_id")
+      .select("id, organization_id, metadata")
       .eq("id", leadId)
       .maybeSingle()
 
@@ -355,6 +355,8 @@ export const updateLeadBasic: UpdateLeadAction = async (
       return { error: "No tienes permiso para editar este lead." }
     }
 
+    const cycleId = (formData.get("cycle_id") as string | null) || null
+
     const { error: updateError } = await supabase
       .from("leads")
       .update({
@@ -372,6 +374,7 @@ export const updateLeadBasic: UpdateLeadAction = async (
         contact_last_name_maternal: contactLastMaternal,
         contact_email: contactEmail,
         contact_phone: contactPhone,
+        cycle_id: cycleId,
       })
       .eq("id", leadId)
 

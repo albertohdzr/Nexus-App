@@ -20,6 +20,7 @@ import {
 import { addLeadNote, sendLeadFollowUp, updateLeadBasic } from "../actions"
 import { LeadEditButton } from "@/src/components/crm/lead-edit-button"
 import { LeadCommunications } from "@/src/components/crm/lead-communications"
+import type { AdmissionCycle } from "@/src/types/admission"
 import type { LeadNote, LeadRecord, LeadMessage } from "@/src/types/lead"
 
 type LeadPageProps = {
@@ -66,6 +67,8 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
       wa_id,
       ai_summary,
       ai_metadata,
+      metadata,
+      cycle_id,
       contact_email,
       contact_phone,
       contact_middle_name,
@@ -133,6 +136,12 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
     notFound()
   }
 
+  const { data: cycles } = await supabase
+    .from("admission_cycles")
+    .select("id, name")
+    .eq("organization_id", profile.organization_id)
+    .order("start_date", { ascending: false })
+
   const chat = Array.isArray(lead.chat) ? lead.chat[0] : lead.chat
   const normalized: LeadRecord = {
     ...lead,
@@ -147,7 +156,11 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
       : null,
     notes: lead.notes as LeadNote[] | null,
     emails: lead.emails as LeadNote[] | null,
+    cycle_id: lead.cycle_id || null,
   }
+
+  const cycleName =
+    cycles?.find((cycle) => cycle.id === normalized.cycle_id)?.name || "Sin ciclo"
 
   const sessions = getSessions(normalized)
   const summary = getLeadSummary(normalized)
@@ -197,7 +210,14 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <LeadEditButton lead={normalized} updateLeadAction={updateLeadBasic} />
+          <Badge variant="secondary" className="capitalize">
+            {cycleName}
+          </Badge>
+          <LeadEditButton
+            lead={normalized}
+            updateLeadAction={updateLeadBasic}
+            cycles={cycles as AdmissionCycle[] | undefined}
+          />
           <Badge
             variant="outline"
             className={cn(

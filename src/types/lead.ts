@@ -37,6 +37,7 @@ export type LeadRecord = {
   grade_interest: string
   school_year: string | null
   campus: string | null
+  cycle_id?: string | null
   student_first_name?: string | null
   student_middle_name?: string | null
   student_last_name_paternal?: string | null
@@ -45,6 +46,7 @@ export type LeadRecord = {
   wa_id: string | null
   ai_summary: string | null
   ai_metadata?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null
   contact_email: string | null
   contact_phone: string | null
   contact_first_name?: string | null

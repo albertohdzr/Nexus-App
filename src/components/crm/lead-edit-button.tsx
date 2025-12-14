@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/src/components/ui/sheet"
 import { cn } from "@/src/lib/utils"
 import type { LeadRecord } from "@/src/types/lead"
+import type { AdmissionCycle } from "@/src/types/admission"
 import type { UpdateLeadAction, UpdateLeadActionState } from "@/src/app/(dashboard)/crm/leads/actions"
 
 const leadStatuses = [
@@ -26,10 +27,11 @@ const leadStatuses = [
 type LeadEditButtonProps = {
   lead: LeadRecord
   updateLeadAction: UpdateLeadAction
+  cycles?: AdmissionCycle[]
   className?: string
 }
 
-export function LeadEditButton({ lead, updateLeadAction, className }: LeadEditButtonProps) {
+export function LeadEditButton({ lead, updateLeadAction, cycles = [], className }: LeadEditButtonProps) {
   const [open, setOpen] = useState(false)
   const [state, formAction, pending] = useActionState<UpdateLeadActionState, FormData>(
     updateLeadAction,
@@ -40,6 +42,8 @@ export function LeadEditButton({ lead, updateLeadAction, className }: LeadEditBu
     [lead.status]
   )
   const [statusValue, setStatusValue] = useState(currentStatus)
+  const [cycleId, setCycleId] = useState<string | null>(lead.cycle_id ?? null)
+  const [cycleValue, setCycleValue] = useState<string>(cycleId ?? "none")
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -60,6 +64,7 @@ export function LeadEditButton({ lead, updateLeadAction, className }: LeadEditBu
         >
           <input type="hidden" name="leadId" value={lead.id} />
           <input type="hidden" name="status" value={statusValue} />
+          <input type="hidden" name="cycle_id" value={cycleId || ""} />
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -149,6 +154,28 @@ export function LeadEditButton({ lead, updateLeadAction, className }: LeadEditBu
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Ciclo escolar</label>
               <Input name="school_year" defaultValue={lead.school_year || ""} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Admisión - Ciclo</label>
+              <Select
+                value={cycleValue}
+                onValueChange={(val) => {
+                  setCycleValue(val)
+                  setCycleId(val === "none" ? null : val)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona ciclo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin ciclo</SelectItem>
+                  {cycles.map((cycle) => (
+                    <SelectItem key={cycle.id} value={cycle.id}>
+                      {cycle.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Estado</label>
