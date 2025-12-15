@@ -3,3 +3,5 @@ export * from "./navigation";
 export * from "./auth";
 export * from "./organization";
 export * from "./whatsapp";
+export * from "./lead";
+export * from "./admission";
