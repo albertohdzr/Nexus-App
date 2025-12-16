@@ -1,6 +1,5 @@
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/src/lib/utils"
@@ -22,7 +21,9 @@ import {
     Settings,
     Search,
     Command,
-    ChevronRight
+    ChevronRight,
+    Shield,
+    UserX
 } from "lucide-react"
 import { Input } from "@/src/components/ui/input"
 import { UserNav } from "@/src/components/layout/user-nav"
@@ -146,6 +147,27 @@ export function Sidebar() {
                     <span>Help Center</span>
                 </Link>
                 <Link
+                    href="/privacy-policy"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                    <Shield className="h-4 w-4" />
+                    <span>Privacy Policy</span>
+                </Link>
+                <Link
+                    href="/terms-of-service"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                    <FileText className="h-4 w-4" />
+                    <span>Terms of Service</span>
+                </Link>
+                <Link
+                    href="/data-deletion"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                    <UserX className="h-4 w-4" />
+                    <span>Data Deletion</span>
+                </Link>
+                <Link
                     href="/settings"
                     className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
@@ -160,3 +182,4 @@ export function Sidebar() {
         </div>
     )
 }
+

@@ -21,6 +21,15 @@ export default function AuthLayout({
                 <div className="flex flex-1 items-center justify-center">
                     <div className="w-full max-w-xs">{children}</div>
                 </div>
+                <div className="mt-auto flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                    <Link href="/privacy-policy" className="hover:text-primary transition-colors">
+                        Política de Privacidad
+                    </Link>
+                    <span>·</span>
+                    <Link href="/terms-of-service" className="hover:text-primary transition-colors">
+                        Condiciones del Servicio
+                    </Link>
+                </div>
             </div>
             <div className="bg-muted relative hidden lg:block">
                 <Image
