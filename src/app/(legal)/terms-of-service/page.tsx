@@ -34,7 +34,7 @@ export default function TermsOfServicePage() {
                 <section>
                     <h2 className="text-xl font-semibold mb-3 text-foreground">3. Uso Aceptable del Chatbot y Mensajería</h2>
                     <p>
-                        Nuestra plataforma integra servicios de mensajería automatizada (API de WhatsApp/Meta). Al utilizar estas funciones, usted se compromete a:
+                        Nuestra plataforma integra servicios de mensajería automatizada (API de WhatsApp Business y Facebook Messenger). Al utilizar estas funciones, usted se compromete a:
                     </p>
                     <ul className="list-disc pl-5 mt-2 space-y-1">
                         <li>No enviar mensajes masivos no solicitados (spam).</li>

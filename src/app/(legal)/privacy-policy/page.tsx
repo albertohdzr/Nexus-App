@@ -45,7 +45,7 @@ export default function PrivacyPolicyPage() {
                         <li><strong>Provisión del Servicio:</strong> Para autenticar su cuenta, gestionar su perfil y permitir el acceso a las funcionalidades del CRM y gestión escolar.</li>
                         <li><strong>Mejora del Servicio:</strong> Para analizar el uso de la plataforma y desarrollar nuevas funcionalidades.</li>
                         <li><strong>Comunicaciones:</strong> Para enviarle actualizaciones importantes, notificaciones de seguridad y, con su consentimiento, información sobre nuevos productos.</li>
-                        <li><strong>Funcionalidades de IA:</strong> Utilizamos servicios de inteligencia artificial para mejorar su experiencia (ver sección de Terceros).</li>
+                        <li><strong>Funcionalidades de IA y Mensajería:</strong> Utilizamos servicios de inteligencia artificial y plataformas de mensajería (WhatsApp, Facebook Messenger) para mejorar su experiencia (ver sección de Terceros).</li>
                     </ul>
                 </section>
 
