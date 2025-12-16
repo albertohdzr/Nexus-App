@@ -7,6 +7,43 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+type ParsedName = {
+  first_name: string
+  middle_name: string | null
+  last_name_paternal: string
+  last_name_maternal: string | null
+}
+
+function parseMexicanName(fullName: string): ParsedName {
+  const parts = fullName.trim().split(/\s+/)
+
+  if (parts.length === 0) {
+    return { first_name: "", middle_name: null, last_name_paternal: "", last_name_maternal: null }
+  }
+
+  if (parts.length === 1) {
+    return { first_name: parts[0], middle_name: null, last_name_paternal: "", last_name_maternal: null }
+  }
+
+  if (parts.length === 2) {
+    const [first, paternal] = parts
+    return { first_name: first, middle_name: null, last_name_paternal: paternal, last_name_maternal: null }
+  }
+
+  if (parts.length === 3) {
+    const [first, paternal, maternal] = parts
+    return { first_name: first, middle_name: null, last_name_paternal: paternal, last_name_maternal: maternal }
+  }
+
+  const [first, middle, paternal, ...rest] = parts
+  return {
+    first_name: first,
+    middle_name: middle,
+    last_name_paternal: paternal,
+    last_name_maternal: rest.join(" "),
+  }
+}
+
 export async function createOrganizationAction(formData: FormData) {
   console.log("Starting createOrganizationAction")
   const supabase = await createClient()
@@ -91,13 +128,16 @@ export async function createOrganizationAction(formData: FormData) {
   console.log("Admin user created:", adminUser.user.id)
 
   if (adminUser.user) {
+      const parsedName = parseMexicanName(adminName)
       // 3. Create User Profile
       const { error: profileError } = await supabaseAdmin
         .from("user_profiles")
         .insert({
             id: adminUser.user.id,
-            first_name: adminName.split(" ")[0],
-            last_name: adminName.split(" ").slice(1).join(" ") || "",
+            first_name: parsedName.first_name,
+            middle_name: parsedName.middle_name,
+            last_name_paternal: parsedName.last_name_paternal,
+            last_name_maternal: parsedName.last_name_maternal,
             email: adminEmail,
             organization_id: org.id,
             role: "org_admin",

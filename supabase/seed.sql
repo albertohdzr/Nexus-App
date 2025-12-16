@@ -45,7 +45,7 @@ INSERT INTO public.user_profiles (
     organization_id,
     role,
     first_name,
-    last_name,
+    last_name_paternal,
     email,
     is_active
 ) VALUES (

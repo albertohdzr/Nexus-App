@@ -82,7 +82,7 @@ export async function sendMessage(formData: FormData) {
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("first_name, last_name")
+    .select("full_name, first_name, last_name_paternal, last_name_maternal")
     .eq("id", user.id)
     .single();
 
@@ -227,7 +227,9 @@ export async function sendMessage(formData: FormData) {
       status: "sent", // Optimistic status
       sent_at: createdAt,
       sender_profile_id: user.id,
-      sender_name: profile ? `${profile.first_name} ${profile.last_name}` : null,
+      sender_name: profile
+        ? profile.full_name || `${profile.first_name} ${profile.last_name_paternal || ""}`.trim()
+        : null,
       payload,
       media_id: mediaId,
       media_url: mediaPath ? `/api/storage/media?path=${encodeURIComponent(mediaPath)}` : mediaUrl,
