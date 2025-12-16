@@ -30,6 +30,7 @@ export const navigationModules: ModuleConfig[] = [
         roles: ['superadmin', 'org_admin', 'director', 'admissions'],
         subNavigation: [
             { title: 'Leads', href: '/crm/leads', icon: Users },
+            { title: 'Citas', href: '/crm/appointments', icon: Calendar },
             { title: 'Activities', href: '/crm/activities', icon: Calendar },
             { title: 'Chatbot', href: '/crm/chat', icon: MessageSquare },
             { title: 'Analytics', href: '/crm/analytics', icon: PieChart },
