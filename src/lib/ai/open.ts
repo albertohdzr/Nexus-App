@@ -79,8 +79,8 @@ const submitToolOutputs = async ({
     model: model ?? DEFAULT_MODEL,
     conversation: conversationId,
     input: toolOutputs.map((tool) => ({
-      type: "tool_output",
-      tool_call_id: tool.tool_call_id,
+      type: "custom_tool_call_output",
+      call_id: tool.tool_call_id,
       output: tool.output,
     })),
   });

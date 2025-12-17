@@ -58,7 +58,7 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
       source,
       grade_interest,
       school_year,
-      campus,
+      current_school,
       student_first_name,
       student_middle_name,
       student_last_name_paternal,
@@ -195,7 +195,7 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
             </h1>
             <p className="text-sm text-muted-foreground">
               {normalized.grade_interest || "Grado no especificado"}
-              {normalized.campus ? ` • ${normalized.campus}` : ""}
+              {normalized.current_school ? ` • ${normalized.current_school}` : ""}
               {normalized.school_year ? ` • ${normalized.school_year}` : ""}
             </p>
             <p className="text-xs text-muted-foreground flex items-center gap-2 mt-2">

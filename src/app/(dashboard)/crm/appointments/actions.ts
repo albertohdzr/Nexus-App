@@ -106,6 +106,8 @@ function addMinutes(date: Date, minutes: number) {
 
 type GenerateState = ActionState & { inserted?: number }
 
+import { fromZonedTime, toZonedTime } from "date-fns-tz"
+
 export async function generateSlots(
   _prevState: GenerateState,
   formData: FormData
@@ -123,21 +125,19 @@ export async function generateSlots(
     return { error: "Selecciona un rango de fechas" }
   }
 
-  const startDate = new Date(`${startDateStr}T00:00:00`)
-  const endDate = new Date(`${endDateStr}T00:00:00`)
-
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    return { error: "Fechas inválidas" }
+  // We only check format, not logical validity in timezone yet
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) || !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr)) {
+      return { error: "Formato de fecha inválido" }
   }
 
-  if (endDate < startDate) {
+  if (startDateStr > endDateStr) {
     return { error: "La fecha fin debe ser mayor o igual a la inicial" }
   }
 
   const { data: settings } = await ctx.supabase
     .from("appointment_settings")
     .select(
-      "slot_duration_minutes, start_time, end_time, days_of_week, buffer_minutes, allow_overbooking"
+      "slot_duration_minutes, start_time, end_time, days_of_week, buffer_minutes, allow_overbooking, timezone"
     )
     .eq("organization_id", ctx.profile.organization_id)
     .single()
@@ -149,8 +149,10 @@ export async function generateSlots(
     days_of_week: [1, 2, 3, 4, 5],
     buffer_minutes: 0,
     allow_overbooking: false,
+    timezone: "America/Mexico_City",
   }
 
+  const timeZone = effectiveSettings.timezone || "America/Mexico_City"
   const duration = effectiveSettings.slot_duration_minutes || 60
   const bufferMinutes = effectiveSettings.buffer_minutes || 0
   const allowedDays = Array.isArray(effectiveSettings.days_of_week)
@@ -184,52 +186,85 @@ export async function generateSlots(
 
   const slotsToInsert: Record<string, unknown>[] = []
 
-  for (
-    let current = new Date(startDate);
-    current <= endDate;
-    current = addMinutes(current, 24 * 60)
-  ) {
-    const day = current.getDay()
-    if (!allowedDays.includes(day)) {
-      continue
+  // Iterate day by day from startDate to endDate interpreting them in the target timezone
+  // We constructs a Date that represents midnight *in the target timezone*
+  // Then we iterate slots for that day.
+
+  // Parse strings to create the loop range
+  // Using simple string comparison/iteration or Date operations carefully
+  let currentStr = startDateStr
+  while (currentStr <= endDateStr) {
+    // Construct midnight in the target timezone
+    // e.g. "2023-10-27T00:00:00" combined with timeZone -> Absolute Date
+    const dayStartZoned = fromZonedTime(`${currentStr} 00:00:00`, timeZone)
+    
+    // Check day of week (0-6)
+    // We must check the day *in the target timezone*
+    // fromZonedTime returns a Date (UTC moment). toZonedTime converts it back to context
+    const zonedDate = toZonedTime(dayStartZoned, timeZone)
+    const dayOfWeek = zonedDate.getDay() // 0 = Sunday
+
+    if (allowedDays.includes(dayOfWeek)) {
+       const dayBlackouts = blackoutMap.get(currentStr) || []
+       
+       // Generate slots for this day
+       // Start at startTime minutes
+       // Stop before endTime minutes
+       
+       let currentMinute = startMinutes
+       while (currentMinute < endMinutes) {
+         const slotEndMinute = currentMinute + duration
+         if (slotEndMinute > endMinutes) break
+         
+         const totalBuffer = duration + bufferMinutes
+         
+         // Check overlap with blackouts
+         const overlaps = dayBlackouts.some(
+           (b) => currentMinute < b.end && slotEndMinute > b.start
+         )
+         
+         if (!overlaps) {
+           // Construct absolute start/end times
+           // We have the day (currentStr) and the minute offset
+           const slotStartHour = Math.floor(currentMinute / 60)
+           const slotStartMin = currentMinute % 60
+           const slotEndHour = Math.floor(slotEndMinute / 60)
+           const slotEndMin = slotEndMinute % 60
+           
+           const paddedStart = `${String(slotStartHour).padStart(2,'0')}:${String(slotStartMin).padStart(2,'0')}:00`
+           const paddedEnd = `${String(slotEndHour).padStart(2,'0')}:${String(slotEndMin).padStart(2,'0')}:00`
+           
+           const startAbsolute = fromZonedTime(`${currentStr} ${paddedStart}`, timeZone)
+           const endAbsolute = fromZonedTime(`${currentStr} ${paddedEnd}`, timeZone)
+           
+           slotsToInsert.push({
+             organization_id: ctx.profile.organization_id,
+             starts_at: startAbsolute.toISOString(),
+             ends_at: endAbsolute.toISOString(),
+             campus,
+             max_appointments: 1,
+             is_active: true,
+             is_blocked: false,
+             appointments_count: 0,
+             updated_at: new Date().toISOString(),
+           })
+         }
+         
+         // Advance
+         currentMinute += totalBuffer
+       }
     }
 
-    const dateStr = current.toISOString().slice(0, 10)
-    const dayBlackouts = blackoutMap.get(dateStr) || []
-    const dayStart = addMinutes(new Date(dateStr), startMinutes)
-    const dayEnd = addMinutes(new Date(dateStr), endMinutes)
-
-    for (
-      let slotStart = new Date(dayStart);
-      slotStart < dayEnd;
-      slotStart = addMinutes(slotStart, duration + bufferMinutes)
-    ) {
-      const slotEnd = addMinutes(slotStart, duration)
-      if (slotEnd > dayEnd) {
-        break
-      }
-
-      const startMinute = slotStart.getHours() * 60 + slotStart.getMinutes()
-      const endMinute = slotEnd.getHours() * 60 + slotEnd.getMinutes()
-      const overlapsBlackout = dayBlackouts.some(
-        (b) => startMinute < b.end && endMinute > b.start
-      )
-      if (overlapsBlackout) {
-        continue
-      }
-
-      slotsToInsert.push({
-        organization_id: ctx.profile.organization_id,
-        starts_at: slotStart.toISOString(),
-        ends_at: slotEnd.toISOString(),
-        campus,
-        max_appointments: 1,
-        is_active: true,
-        is_blocked: false,
-        appointments_count: 0,
-        updated_at: new Date().toISOString(),
-      })
-    }
+    // Advance to next day properly
+    const nextDay = new Date(dayStartZoned)
+    nextDay.setDate(nextDay.getDate() + 1)
+    // Convert back to YYYY-MM-DD string to continue loop
+    // Use the *target timezone* to extract the date string to ensure we just move 1 day forward in calendar
+    const nextDayZoned = toZonedTime(nextDay, timeZone)
+    const y = nextDayZoned.getFullYear()
+    const m = String(nextDayZoned.getMonth() + 1).padStart(2,'0')
+    const d = String(nextDayZoned.getDate()).padStart(2,'0')
+    currentStr = `${y}-${m}-${d}`
   }
 
   if (!slotsToInsert.length) {

@@ -36,7 +36,7 @@ export type LeadRecord = {
   source: string
   grade_interest: string
   school_year: string | null
-  campus: string | null
+  current_school: string | null
   cycle_id?: string | null
   student_first_name?: string | null
   student_middle_name?: string | null

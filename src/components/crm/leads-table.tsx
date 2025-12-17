@@ -119,7 +119,7 @@ export function LeadsTable({ leads, sendFollowUpAction }: LeadsTableProps) {
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {lead.grade_interest || "Sin grado"}
-                            {lead.campus ? ` • ${lead.campus}` : ""}
+                            {lead.current_school ? ` • ${lead.current_school}` : ""}
                           </p>
                         </div>
                       </div>
@@ -296,9 +296,9 @@ function LeadDetailsSheet({
                 ) : null}
               </div>
               <div>
-                <p className="text-muted-foreground">Campus / ciclo</p>
+                <p className="text-muted-foreground">Escuela actual / ciclo</p>
                 <p className="font-medium">
-                  {lead.campus || "N/A"}
+                  {lead.current_school || "N/A"}
                   {lead.school_year ? ` • ${lead.school_year}` : ""}
                 </p>
               </div>

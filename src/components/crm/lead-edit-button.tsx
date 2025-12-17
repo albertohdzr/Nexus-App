@@ -148,8 +148,8 @@ export function LeadEditButton({ lead, updateLeadAction, cycles = [], className 
               <Input name="grade_interest" defaultValue={lead.grade_interest || ""} required />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Campus</label>
-              <Input name="campus" defaultValue={lead.campus || ""} />
+              <label className="text-sm font-medium">Escuela actual</label>
+              <Input name="current_school" defaultValue={lead.current_school || ""} />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Ciclo escolar</label>

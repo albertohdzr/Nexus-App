@@ -294,7 +294,7 @@ export const updateLeadBasic: UpdateLeadAction = async (
     const leadId = formData.get("leadId") as string | null
     const status = (formData.get("status") as string | null) ?? ""
     const grade = (formData.get("grade_interest") as string | null) ?? ""
-    const campus = (formData.get("campus") as string | null) ?? null
+    const currentSchool = (formData.get("current_school") as string | null) ?? null
     const schoolYear = (formData.get("school_year") as string | null) ?? null
     const studentFirst = (formData.get("student_first_name") as string | null) ?? ""
     const studentMiddle = (formData.get("student_middle_name") as string | null) ?? null
@@ -362,7 +362,7 @@ export const updateLeadBasic: UpdateLeadAction = async (
       .update({
         status: status || "new",
         grade_interest: grade,
-        campus: campus || null,
+        current_school: currentSchool || null,
         school_year: schoolYear || null,
         student_first_name: studentFirst,
         student_middle_name: studentMiddle,

@@ -3,18 +3,12 @@ import { openAIService, type ResponseTool } from "@/src/lib/ai/open";
 const HANDOFF_RESPONSE_TEXT = "Perfecto, en un momento una persona lo contactará.";
 
 type CreateLeadArgs = {
+  contact_name?: string | null;
   contact_phone: string;
-  contact_email?: string | null;
-  contact_first_name?: string | null;
-  contact_last_name_paternal?: string | null;
   student_first_name: string;
   student_last_name_paternal: string;
   grade_interest: string;
-  student_middle_name?: string | null;
-  student_last_name_maternal?: string | null;
-  student_dob?: string | null;
-  school_year?: string | null;
-  campus?: string | null;
+  current_school?: string | null;
   summary: string;
   source?: string | null;
 };
@@ -64,6 +58,17 @@ type DirectoryContactContext = {
   share_mobile?: boolean | null
 }
 
+type LeadProfileContext = {
+  contact_name?: string | null
+  contact_phone?: string | null
+  contact_email?: string | null
+  student_first_name?: string | null
+  student_last_name_paternal?: string | null
+  grade_interest?: string | null
+  school_year?: string | null
+  current_school?: string | null
+}
+
 type BotContext = {
   organizationId: string;
   organizationName?: string | null;
@@ -78,6 +83,11 @@ type BotContext = {
   capabilities?: CapabilityContext[];
   botDirectoryEnabled?: boolean | null;
   directoryContacts?: DirectoryContactContext[];
+  leadActive?: boolean | null;
+  leadId?: string | null;
+  leadStatus?: string | null;
+  leadProfile?: LeadProfileContext | null;
+  appointmentsEnabled?: boolean | null;
 };
 
 const HANDOFF_TOOL: ResponseTool[] = [
@@ -104,55 +114,33 @@ const CREATE_LEAD_TOOL: ResponseTool = {
   type: "function",
   name: "create_lead",
   description:
-    "Crea un lead cuando ya tengas los datos mínimos. Pide más información si falta algo. No llames la función hasta tener los campos requeridos.",
+    "Crea un lead cuando ya tengas los datos mínimos. No pidas datos extra si no los mencionan. No llames la función hasta tener los campos requeridos.",
   parameters: {
     type: "object",
     properties: {
+      contact_name: {
+        type: "string",
+        description: "Nombre completo del contacto/padre/tutor.",
+      },
       contact_phone: {
         type: "string",
         description: "Teléfono de contacto con lada (ej. 5218711234567).",
-      },
-      contact_email: {
-        type: "string",
-        description: "Correo del contacto, si lo proporcionan.",
-      },
-      contact_first_name: {
-        type: "string",
-        description: "Nombre del contacto/padre/tutor.",
-      },
-      contact_last_name_paternal: {
-        type: "string",
-        description: "Apellido paterno del contacto/padre/tutor.",
       },
       student_first_name: {
         type: "string",
         description: "Nombre del estudiante.",
       },
-      student_middle_name: {
-        type: "string",
-      },
       student_last_name_paternal: {
         type: "string",
         description: "Apellido paterno del estudiante.",
-      },
-      student_last_name_maternal: {
-        type: "string",
-      },
-      student_dob: {
-        type: "string",
-        description: "Fecha de nacimiento del estudiante en formato YYYY-MM-DD.",
       },
       grade_interest: {
         type: "string",
         description: "Grado o nivel al que desea inscribirse (requerido).",
       },
-      school_year: {
+      current_school: {
         type: "string",
-        description: "Ciclo escolar de interés, si aplica.",
-      },
-      campus: {
-        type: "string",
-        description: "Campus preferido, si aplica.",
+        description: "Escuela actual del estudiante.",
       },
       summary: {
         type: "string",
@@ -164,18 +152,12 @@ const CREATE_LEAD_TOOL: ResponseTool = {
       },
     },
     required: [
+      "contact_name",
       "contact_phone",
-      "contact_email",
-      "contact_first_name",
-      "contact_last_name_paternal",
       "student_first_name",
-      "student_middle_name",
       "student_last_name_paternal",
-      "student_last_name_maternal",
-      "student_dob",
       "grade_interest",
-      "school_year",
-      "campus",
+      "current_school",
       "summary",
       "source",
     ],
@@ -256,15 +238,76 @@ const CREATE_COMPLAINT_TOOL: ResponseTool = {
   },
 };
 
+const SCHEDULE_VISIT_TOOL: ResponseTool = {
+  type: "function",
+  name: "schedule_visit",
+  description:
+    "Agenda una visita de admisiones cuando ya tengas los datos necesarios. Úsalo solo cuando el usuario confirmó interés en agendar.",
+  parameters: {
+    type: "object",
+    properties: {
+      contact_name: {
+        type: "string",
+        description: "Nombre completo del contacto/tutor.",
+      },
+      contact_phone: {
+        type: "string",
+        description: "Teléfono con lada del contacto.",
+      },
+      student_first_name: {
+        type: "string",
+        description: "Nombre del estudiante.",
+      },
+      student_last_name_paternal: {
+        type: "string",
+        description: "Apellido paterno del estudiante.",
+      },
+      grade_interest: {
+        type: "string",
+        description: "Grado o nivel de interés.",
+      },
+      current_school: {
+        type: "string",
+        description: "Escuela actual del estudiante; si no aplica, deja vacío.",
+      },
+      preferred_date: {
+        type: "string",
+        description: "Fecha preferida para la visita (YYYY-MM-DD).",
+      },
+      preferred_time: {
+        type: "string",
+        description: "Hora preferida (HH:MM) o 'mañana/tarde'.",
+      },
+      notes: {
+        type: "string",
+        description: "Resumen breve de la solicitud; si no hay, deja vacío.",
+      },
+    },
+    required: [
+      "contact_name",
+      "contact_phone",
+      "student_first_name",
+      "student_last_name_paternal",
+      "grade_interest",
+      "current_school",
+      "preferred_date",
+      "preferred_time",
+      "notes",
+    ],
+    additionalProperties: false,
+  },
+};
+
 const BASE_INSTRUCTIONS = `
 Eres un asistente de admisiones. Si el usuario pide hablar con un humano, usa la función request_handoff.
 Si el usuario pide informes o quiere aplicar, recolecta datos para crear un lead usando create_lead:
 - Teléfono de contacto (obligatorio, incluye lada).
-- Nombre del estudiante y apellido paterno (obligatorio, pide materno si aplica).
-- Grado de interés (obligatorio), ciclo escolar y campus si aplica.
-- Nombre del contacto (padre/tutor) y email si lo mencionan.
+- Nombre del estudiante y apellido paterno (obligatorio).
+- Grado de interés y escuela actual (obligatorio).
+- Nombre del contacto (padre/tutor) en una sola línea.
 - Resume la conversación en 'summary'.
 Solo llama create_lead cuando tengas los campos requeridos y sean claros. Mientras falten datos, haz preguntas cortas para obtenerlos.
+No solicites apellido materno, email o fecha de nacimiento si el usuario no los menciona.
 Responde en el idioma preferido si se indica, y mantén el tono configurado.
 
 Estilo de conversación:
@@ -274,6 +317,11 @@ Estilo de conversación:
 - Si el usuario ya pidió un contacto, compártelo directo sin pedir permiso otra vez.
 - Si no tienes un dato (ej. saldo), dilo de forma amable y ofrece el siguiente paso.
 - No ofrezcas contacto si la pregunta ya quedó resuelta y no lo pidió explícitamente.
+- Si el usuario quiere informes de inscripción, guía la conversación para obtener datos y propone agendar una visita.
+- Si está disponible, usa schedule_visit solo cuando ya tengas todos los datos requeridos.
+- Si hay un lead activo, prioriza seguimiento de admisiones y evita temas financieros.
+- Si hay un lead activo y el usuario comparte fecha u horario, asume que es para agendar o reprogramar la visita.
+- No repitas preguntas ya respondidas; usa la información previa del chat.
 `;
 
 const extractResponseText = (response: unknown) => {
@@ -399,6 +447,9 @@ const generateChatbotReply = async ({
   if (hasComplaints) {
     tools.push(CREATE_COMPLAINT_TOOL);
   }
+  if (context.appointmentsEnabled) {
+    tools.push(SCHEDULE_VISIT_TOOL);
+  }
 
   const capabilityBlocks =
     context.capabilities?.map((cap) => {
@@ -421,6 +472,24 @@ const generateChatbotReply = async ({
         .join(", ")}.`
     : "Directorio no disponible para el bot.";
 
+  const leadSummary = context.leadActive
+    ? `Lead activo detectado (id: ${context.leadId || "N/A"}, status: ${
+        context.leadStatus || "N/A"
+      }). Prioriza seguimiento y citas.`
+    : "No hay lead activo detectado.";
+
+  const leadProfile = context.leadProfile
+    ? `Datos del lead: contacto ${context.leadProfile.contact_name || "N/A"} (${
+        context.leadProfile.contact_phone || "N/A"
+      }${context.leadProfile.contact_email ? `, ${context.leadProfile.contact_email}` : ""}), estudiante ${
+        context.leadProfile.student_first_name || "N/A"
+      } ${context.leadProfile.student_last_name_paternal || ""}, grado ${
+        context.leadProfile.grade_interest || "N/A"
+      }, escuela actual ${context.leadProfile.current_school || "N/A"}${
+        context.leadProfile.school_year ? `, ciclo ${context.leadProfile.school_year}` : ""
+      }.`
+    : "";
+
   const dynamicContext = `
 Organización: ${context.organizationName || "N/A"} (${context.organizationId})
 Bot: ${context.botName || "Asistente"}${context.botTone ? `, tono: ${context.botTone}` : ""}${context.botLanguage ? `, idioma preferido: ${context.botLanguage}` : ""}.
@@ -439,6 +508,8 @@ Capacidades disponibles (elige la que corresponda por slug):
 ${capabilityBlocks}
 
 ${directorySummary}
+${leadSummary}
+${leadProfile}
 
 ${dynamicContext}
   `;

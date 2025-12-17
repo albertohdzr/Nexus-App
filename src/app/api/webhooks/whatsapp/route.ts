@@ -13,7 +13,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my_secure_token";
 const SESSION_TIMEOUT_MS = 60_000;
-const LEAD_CONFIRMATION_TEXT = "Gracias, nos comunicaremos contigo más adelante.";
 
 type ChatRecord = {
   id: string;
@@ -22,6 +21,8 @@ type ChatRecord = {
   active_session_id?: string | null;
   requested_handoff?: boolean | null;
   phone_number?: string | null;
+  state?: string | null;
+  state_context?: Record<string, any> | null;
 };
 
 type ChatSessionRecord = {
@@ -95,19 +96,28 @@ type DirectoryContact = {
   is_active?: boolean | null;
 };
 
-type CreateLeadArgs = {
-  contact_phone: string;
-  contact_email?: string | null;
+type LeadSnapshot = {
+  id: string;
+  status: string;
+  contact_id: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
   contact_first_name?: string | null;
   contact_last_name_paternal?: string | null;
+  student_first_name?: string | null;
+  student_last_name_paternal?: string | null;
+  grade_interest?: string | null;
+  school_year?: string | null;
+  current_school?: string | null;
+};
+
+type CreateLeadArgs = {
+  contact_name?: string | null;
+  contact_phone: string;
   student_first_name: string;
   student_last_name_paternal: string;
-  student_middle_name?: string | null;
-  student_last_name_maternal?: string | null;
-  student_dob?: string | null;
   grade_interest: string;
-  school_year?: string | null;
-  campus?: string | null;
+  current_school?: string | null;
   summary: string;
   source?: string | null;
 };
@@ -161,6 +171,44 @@ const closeChatSession = async ({
 
   if (chatError) {
     console.error("Error unlinking chat session from chat", chatError);
+  }
+};
+
+const setChatState = async ({
+  chatId,
+  state,
+  context,
+}: {
+  chatId: string;
+  state: string;
+  context?: Record<string, unknown> | null;
+}) => {
+  const { error } = await supabase
+    .from("chats")
+    .update({
+      state,
+      state_context: context || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", chatId);
+
+  if (error) {
+    console.error("Error updating chat state", error);
+  }
+};
+
+const clearChatState = async (chatId: string) => {
+  const { error } = await supabase
+    .from("chats")
+    .update({
+      state: null,
+      state_context: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", chatId);
+
+  if (error) {
+    console.error("Error clearing chat state", error);
   }
 };
 
@@ -258,21 +306,18 @@ const createLeadRecord = async ({
   contactId: string;
   args: CreateLeadArgs;
 }) => {
+  const { first, lastPaternal } = splitName(args.contact_name);
   const leadPayload = {
     organization_id: organizationId,
     status: "new",
     source: args.source || "whatsapp",
     student_first_name: args.student_first_name,
-    student_middle_name: args.student_middle_name,
     student_last_name_paternal: args.student_last_name_paternal,
-    student_last_name_maternal: args.student_last_name_maternal,
-    student_dob: args.student_dob || null,
     grade_interest: args.grade_interest,
-    school_year: args.school_year,
-    campus: args.campus,
-    contact_first_name: args.contact_first_name || "Contacto",
-    contact_last_name_paternal: args.contact_last_name_paternal,
-    contact_email: args.contact_email,
+    current_school: args.current_school,
+    contact_first_name: first || args.contact_name || "Contacto",
+    contact_last_name_paternal: lastPaternal,
+    contact_email: null,
     contact_phone: args.contact_phone,
     contact_id: contactId,
     wa_chat_id: chatId,
@@ -356,6 +401,323 @@ const loadDirectoryContacts = async (organizationId: string): Promise<DirectoryC
     .order("display_role", { ascending: true });
 
   return (data || []) as DirectoryContact[];
+};
+
+const ACTIVE_LEAD_STATUSES = new Set([
+  "new",
+  "contacted",
+  "qualified",
+  "visit_scheduled",
+  "visited",
+  "application_started",
+  "application_submitted",
+  "admitted",
+]);
+
+const loadLatestLeadByWaId = async (
+  organizationId: string,
+  waId: string
+): Promise<LeadSnapshot | null> => {
+  const { data } = await supabase
+    .from("leads")
+    .select(
+      "id, status, contact_id, contact_phone, contact_email, contact_first_name, contact_last_name_paternal, student_first_name, student_last_name_paternal, grade_interest, school_year, current_school"
+    )
+    .eq("organization_id", organizationId)
+    .eq("wa_id", waId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return (data || null) as LeadSnapshot | null;
+};
+
+const parsePreferredTime = (preferredTime: string) => {
+  const lower = preferredTime.toLowerCase();
+  if (lower.includes("mañana")) return { start: 8, end: 12 };
+  if (lower.includes("tarde")) return { start: 12, end: 18 };
+  const match = preferredTime.match(/(\d{1,2}):(\d{2})/);
+  if (match) {
+    const hour = Number(match[1]);
+    return { start: hour, end: hour + 1 };
+  }
+  const meridiemMatch = preferredTime
+    .toLowerCase()
+    .match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/);
+  if (meridiemMatch) {
+    let hour = Number(meridiemMatch[1]);
+    const minutes = meridiemMatch[2] ? Number(meridiemMatch[2]) : 0;
+    const isPm = meridiemMatch[3].startsWith("p");
+    if (isPm && hour < 12) hour += 12;
+    if (!isPm && hour === 12) hour = 0;
+    if (!Number.isNaN(hour) && !Number.isNaN(minutes)) {
+      return { start: hour, end: hour + 1 };
+    }
+  }
+  return null;
+};
+
+const toIsoDate = (date: Date) => {
+  const normalized = new Date(date);
+  normalized.setHours(12, 0, 0, 0);
+  return normalized.toISOString().slice(0, 10);
+};
+
+const parsePreferredDate = (preferredDate?: string | null) => {
+  if (!preferredDate) return null;
+  const value = preferredDate.trim().toLowerCase();
+  if (!value) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const slashMatch = value.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/);
+  if (slashMatch) {
+    const day = Number(slashMatch[1]);
+    const month = Number(slashMatch[2]);
+    const yearRaw = slashMatch[3];
+    const year = yearRaw ? Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw) : new Date().getFullYear();
+    const parsed = new Date(year, month - 1, day);
+    if (!Number.isNaN(parsed.getTime())) {
+      return toIsoDate(parsed);
+    }
+  }
+
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  if (value.includes("pasado") && (value.includes("mañana") || value.includes("manana"))) {
+    const next = new Date(today);
+    next.setDate(today.getDate() + 2);
+    return toIsoDate(next);
+  }
+
+  if (value.includes("mañana") || value.includes("manana")) {
+    const next = new Date(today);
+    next.setDate(today.getDate() + 1);
+    return toIsoDate(next);
+  }
+
+  if (value.includes("hoy")) {
+    return toIsoDate(today);
+  }
+
+  const weekdayMap: Record<string, number> = {
+    domingo: 0,
+    lunes: 1,
+    martes: 2,
+    miercoles: 3,
+    miércoles: 3,
+    jueves: 4,
+    viernes: 5,
+    sabado: 6,
+    sábado: 6,
+  };
+
+  const weekdayKey = Object.keys(weekdayMap).find((day) => value.includes(day));
+  if (weekdayKey) {
+    const target = weekdayMap[weekdayKey];
+    const current = today.getDay();
+    const delta = (target - current + 7) % 7;
+    const next = new Date(today);
+    next.setDate(today.getDate() + delta);
+    return toIsoDate(next);
+  }
+
+  return null;
+};
+
+const formatAppointmentDate = (isoDate: string) =>
+  new Date(isoDate).toLocaleString("es-MX", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const findAvailableSlot = async ({
+  organizationId,
+  preferredDate,
+  preferredTime,
+}: {
+  organizationId: string;
+  preferredDate?: string | null;
+  preferredTime?: string | null;
+}) => {
+  const nowIso = new Date().toISOString();
+  const normalizedDate = parsePreferredDate(preferredDate) || preferredDate || null;
+  const query = supabase
+    .from("availability_slots")
+    .select("id, starts_at, ends_at, max_appointments, appointments_count")
+    .eq("organization_id", organizationId)
+    .eq("is_active", true)
+    .eq("is_blocked", false)
+    .gte("starts_at", nowIso)
+    .order("starts_at", { ascending: true })
+    .limit(50);
+
+  if (normalizedDate) {
+    const start = new Date(`${normalizedDate}T00:00:00`).toISOString();
+    const end = new Date(`${normalizedDate}T23:59:59`).toISOString();
+    query.gte("starts_at", start).lte("starts_at", end);
+  }
+
+  const { data } = await query;
+  const slots = (data || []).filter(
+    (slot) => slot.appointments_count < slot.max_appointments
+  );
+
+  if (!slots.length) return null;
+
+  if (preferredTime) {
+    const timeWindow = parsePreferredTime(preferredTime);
+    if (timeWindow) {
+      const match = slots.find((slot) => {
+        const hour = new Date(slot.starts_at).getHours();
+        return hour >= timeWindow.start && hour < timeWindow.end;
+      });
+      if (match) return match;
+    }
+  }
+
+  return slots[0];
+};
+
+const loadAvailableSlots = async ({
+  organizationId,
+  preferredDate,
+  limit = 3,
+}: {
+  organizationId: string;
+  preferredDate?: string | null;
+  limit?: number;
+}) => {
+  const nowIso = new Date().toISOString();
+  const normalizedDate = parsePreferredDate(preferredDate) || preferredDate || null;
+  const query = supabase
+    .from("availability_slots")
+    .select("id, starts_at, ends_at, max_appointments, appointments_count")
+    .eq("organization_id", organizationId)
+    .eq("is_active", true)
+    .eq("is_blocked", false)
+    .gte("starts_at", nowIso)
+    .order("starts_at", { ascending: true })
+    .limit(50);
+
+  if (normalizedDate) {
+    const start = new Date(`${normalizedDate}T00:00:00`).toISOString();
+    const end = new Date(`${normalizedDate}T23:59:59`).toISOString();
+    query.gte("starts_at", start).lte("starts_at", end);
+  }
+
+  const { data } = await query;
+  const slots = (data || []).filter(
+    (slot) => slot.appointments_count < slot.max_appointments
+  );
+
+  return slots.slice(0, limit);
+};
+
+const hasAvailableSlots = async (organizationId: string) => {
+  const { data } = await supabase
+    .from("availability_slots")
+    .select("id, max_appointments, appointments_count")
+    .eq("organization_id", organizationId)
+    .eq("is_active", true)
+    .eq("is_blocked", false)
+    .gte("starts_at", new Date().toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(10);
+
+  return (data || []).some(
+    (slot) => slot.appointments_count < slot.max_appointments
+  );
+};
+
+const loadUpcomingAppointment = async (leadId: string) => {
+  const { data } = await supabase
+    .from("appointments")
+    .select("id, starts_at, ends_at, status, slot_id, notes")
+    .eq("lead_id", leadId)
+    .in("status", ["scheduled", "rescheduled"])
+    .gte("starts_at", new Date().toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  return data || null;
+};
+
+const loadLatestAppointment = async (leadId: string) => {
+  const { data } = await supabase
+    .from("appointments")
+    .select("id, starts_at, ends_at, status, slot_id, notes")
+    .eq("lead_id", leadId)
+    .order("starts_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return data || null;
+};
+
+const decrementSlotCount = async (slotId?: string | null) => {
+  if (!slotId) return;
+  const { data } = await supabase
+    .from("availability_slots")
+    .select("appointments_count")
+    .eq("id", slotId)
+    .single();
+  if (data) {
+    await supabase
+      .from("availability_slots")
+      .update({
+        appointments_count: Math.max(0, data.appointments_count - 1),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", slotId);
+  }
+};
+
+const parseOptionSelection = (message: string) => {
+  const normalized = message.toLowerCase();
+  if (/(primera|primer|1ra|1a|opcion 1|opción 1|\b1\b)/.test(normalized)) {
+    return 0;
+  }
+  if (/(segunda|segundo|2da|2a|opcion 2|opción 2|\b2\b)/.test(normalized)) {
+    return 1;
+  }
+  if (/(tercera|tercer|3ra|3a|opcion 3|opción 3|\b3\b)/.test(normalized)) {
+    return 2;
+  }
+  return null;
+};
+
+const loadLatestSuggestedSlots = async (chatId: string) => {
+  const { data } = await supabase
+    .from("messages")
+    .select("payload, created_at")
+    .eq("chat_id", chatId)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  for (const row of data || []) {
+    const payload = row.payload as
+      | { tool?: string; slots?: string[]; alternative_slots?: string[] }
+      | null
+      | undefined;
+    if (!payload) continue;
+    if (payload.tool === "appointment_availability" && Array.isArray(payload.slots)) {
+      return payload.slots;
+    }
+    if (payload.tool === "schedule_visit" && Array.isArray(payload.alternative_slots)) {
+      return payload.alternative_slots;
+    }
+  }
+
+  return [];
 };
 
 const submitToolOutputs = async ({
@@ -525,6 +887,8 @@ const handleAIResponse = async ({
   capabilities,
   directoryContacts,
   botDirectoryEnabled,
+  lead,
+  leadActive,
 }: {
   chat: ChatRecord;
   organization: {
@@ -545,6 +909,8 @@ const handleAIResponse = async ({
   capabilities: BotCapability[];
   directoryContacts: DirectoryContact[];
   botDirectoryEnabled: boolean;
+  lead: LeadSnapshot | null;
+  leadActive: boolean;
 }) => {
   const handleHandoff = async (aiResponseId?: string) => {
     const nowIso = new Date().toISOString();
@@ -636,7 +1002,13 @@ const handleAIResponse = async ({
   }
 
   try {
-    const capabilityContext = capabilities.map((cap) => ({
+    const chatState = chat.state || null;
+    const chatStateContext = (chat.state_context || {}) as Record<string, any>;
+
+    const activeCapabilities = leadActive
+      ? capabilities.filter((cap) => cap.type !== "finance")
+      : capabilities;
+    const capabilityContext = activeCapabilities.map((cap) => ({
       slug: cap.slug,
       title: cap.title,
       description: cap.description,
@@ -648,7 +1020,514 @@ const handleAIResponse = async ({
       finance: cap.finance,
     }));
 
+    const appointmentsEnabled = await hasAvailableSlots(organization.id);
+
     const normalizedMessage = latestUserMessage.toLowerCase();
+    const leadProfile = leadActive && lead
+      ? {
+          contact_name: [lead.contact_first_name, lead.contact_last_name_paternal]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || null,
+          contact_phone: lead.contact_phone || null,
+          contact_email: lead.contact_email || null,
+          student_first_name: lead.student_first_name || null,
+          student_last_name_paternal: lead.student_last_name_paternal || null,
+          grade_interest: lead.grade_interest || null,
+          school_year: lead.school_year || null,
+          current_school: lead.current_school || null,
+        }
+      : null;
+
+    const appointmentIntent = /(cita|visita|agendar|agenda|reagend|reprogram|cancel|posponer|cambiar)/i.test(
+      latestUserMessage
+    );
+    const availabilityIntent = /(disponible|disponibles|horario|horarios|fecha|fechas)/i.test(
+      latestUserMessage
+    );
+    const cancelIntent = /(cancel|anular)/i.test(latestUserMessage);
+    const rescheduleIntent = /(reprogram|reagendar|posponer|cambiar)/i.test(latestUserMessage);
+    const optionSelection = parseOptionSelection(latestUserMessage);
+    const appointmentStatusIntent = /(cuando era mi cita|cu[aá]ndo era mi cita|cu[aá]ndo es mi cita|mi cita|cancelad|cancelaste)/i.test(
+      latestUserMessage
+    );
+    const whoIsAppointmentForIntent = /(cita para quien|para quien|para quién)/i.test(
+      latestUserMessage
+    );
+
+    if (chatState === "awaiting_cancel_reason") {
+      const reason = latestUserMessage.trim();
+      const appointmentId = chatStateContext.appointment_id as string | undefined;
+      const { data: appointment } = appointmentId
+        ? await supabase
+            .from("appointments")
+            .select("id, slot_id, notes")
+            .eq("id", appointmentId)
+            .maybeSingle()
+        : { data: null };
+
+      if (appointment?.id) {
+        const nextNotes = appointment.notes
+          ? `${appointment.notes}\nCancelación: ${reason}`
+          : `Cancelación: ${reason}`;
+        await supabase
+          .from("appointments")
+          .update({ status: "cancelled", notes: nextNotes, updated_at: new Date().toISOString() })
+          .eq("id", appointment.id);
+        await decrementSlotCount(appointment.slot_id);
+      }
+
+      await clearChatState(chat.id);
+
+      const replyText =
+        "Gracias por contármelo. Ya cancelé tu cita. Si quieres, puedo proponerte otra fecha para la visita.";
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "appointment_cancel_reason",
+            conversation_id: session?.conversation_id,
+            appointment_id: appointment?.id ?? appointmentId ?? null,
+            reason,
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
+    if (chatState === "awaiting_reschedule_reason") {
+      const reason = latestUserMessage.trim();
+      await setChatState({
+        chatId: chat.id,
+        state: "awaiting_reschedule_date",
+        context: {
+          appointment_id: chatStateContext.appointment_id ?? null,
+          reason,
+        },
+      });
+
+      const slots = await loadAvailableSlots({ organizationId: organization.id, limit: 3 });
+      const replyText = slots.length
+        ? `Gracias por compartirlo. Tengo estos horarios disponibles: ${slots
+            .map((slot) => formatAppointmentDate(slot.starts_at))
+            .join(" · ")}. ¿Cuál te funciona?`
+        : "Gracias por compartirlo. ¿Qué fecha y hora prefieres para reprogramar?";
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "appointment_reschedule_reason",
+            conversation_id: session?.conversation_id,
+            reason,
+            slots: slots.map((slot) => slot.id),
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
+    if (whoIsAppointmentForIntent && leadActive) {
+      const upcoming = lead?.id ? await loadUpcomingAppointment(lead.id) : null;
+      const studentName = [lead?.student_first_name, lead?.student_last_name_paternal]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      const replyText = upcoming
+        ? `La cita es para ${studentName || "el estudiante"} y está programada para ${formatAppointmentDate(
+            upcoming.starts_at
+          )}. ¿Quieres reprogramarla o cancelarla?`
+        : `La visita sería para ${studentName || "el estudiante"}. ¿Qué fecha y hora prefieres?`;
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "appointment_subject",
+            conversation_id: session?.conversation_id,
+            appointment_id: upcoming?.id ?? null,
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
+    if (appointmentStatusIntent && lead?.id) {
+      const latestAppointment = await loadLatestAppointment(lead.id);
+      const replyText = latestAppointment
+        ? `Tu última cita fue para ${formatAppointmentDate(
+            latestAppointment.starts_at
+          )} y quedó ${latestAppointment.status}. ¿Quieres agendar una nueva visita?`
+        : "No tengo una cita registrada. ¿Quieres que agendemos una visita?";
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "appointment_status",
+            conversation_id: session?.conversation_id,
+            appointment_id: latestAppointment?.id ?? null,
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
+    if (leadActive && appointmentIntent) {
+      const upcoming = lead?.id ? await loadUpcomingAppointment(lead.id) : null;
+      let replyText = "";
+
+      if (cancelIntent && upcoming?.id) {
+        await setChatState({
+          chatId: chat.id,
+          state: "awaiting_cancel_reason",
+          context: { appointment_id: upcoming.id, slot_id: upcoming.slot_id },
+        });
+        replyText = "Entiendo. ¿Podrías compartir el motivo de la cancelación?";
+      } else if (rescheduleIntent && upcoming?.id) {
+        await setChatState({
+          chatId: chat.id,
+          state: "awaiting_reschedule_reason",
+          context: { appointment_id: upcoming.id, slot_id: upcoming.slot_id },
+        });
+        replyText = "Claro. ¿Podrías contarme el motivo para reprogramarla?";
+      } else if (!appointmentsEnabled && !upcoming) {
+        replyText =
+          "Por ahora no tengo horarios disponibles. ¿Quieres que un asesor te contacte?";
+      } else if (rescheduleIntent) {
+        replyText = upcoming
+          ? "Claro, ¿qué fecha y hora prefieres para reprogramarla?"
+          : "No tengo una cita agendada. ¿Qué fecha y hora prefieres para agendar una visita?";
+      } else if (cancelIntent) {
+        replyText = "No tengo una cita agendada. ¿Quieres que agendemos una visita?";
+      } else {
+        replyText = upcoming
+          ? `Tu visita está programada para ${formatAppointmentDate(
+              upcoming.starts_at
+            )}. ¿Quieres reprogramarla o cancelarla?`
+          : "No tengo una cita agendada. ¿Qué fecha y hora prefieres para agendar una visita?";
+      }
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "appointment_followup",
+            conversation_id: session?.conversation_id,
+            appointment_id: upcoming?.id ?? null,
+            query: latestUserMessage,
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
+    if (optionSelection !== null) {
+      if (!lead?.id) {
+        const replyText =
+          "Para agendar necesito tu nombre y teléfono de contacto. ¿Me los compartes?";
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: replyText,
+        });
+        if (!error) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session?.id ?? null,
+            response_id: null,
+            wa_message_id: messageId,
+            body: replyText,
+            type: "text",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: "Bot",
+            payload: {
+              tool: "appointment_selection",
+              conversation_id: session?.conversation_id,
+              status: "missing_lead",
+            },
+            created_at: nowIso,
+          });
+        }
+        return;
+      }
+
+      const suggestedSlots = await loadLatestSuggestedSlots(chat.id);
+      const slotId = suggestedSlots[optionSelection];
+      if (slotId) {
+        const { data: slot } = await supabase
+          .from("availability_slots")
+          .select(
+            "id, starts_at, ends_at, max_appointments, appointments_count, is_active, is_blocked"
+          )
+          .eq("id", slotId)
+          .single();
+
+        if (
+          slot &&
+          slot.is_active &&
+          !slot.is_blocked &&
+          slot.appointments_count < slot.max_appointments
+        ) {
+          const existingAppointment = await loadUpcomingAppointment(lead.id);
+          const rescheduleReason =
+            chatState === "awaiting_reschedule_date"
+              ? (chatStateContext.reason as string | undefined)
+              : undefined;
+          const { data: appointment, error: appointmentError } = await supabase
+            .from("appointments")
+            .insert({
+              organization_id: organization.id,
+              lead_id: lead.id,
+              slot_id: slot.id,
+              starts_at: slot.starts_at,
+              ends_at: slot.ends_at,
+              status: "scheduled",
+              type: "visit",
+              notes: [
+                "Agendada desde sugerencias de disponibilidad.",
+                rescheduleReason ? `Reprogramación: ${rescheduleReason}` : null,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+            })
+            .select("id")
+            .single();
+
+          if (!appointmentError) {
+            await supabase
+              .from("availability_slots")
+              .update({
+                appointments_count: slot.appointments_count + 1,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", slot.id);
+          }
+
+          if (!appointmentError && existingAppointment?.id) {
+            const rescheduleNotes = rescheduleReason
+              ? `${existingAppointment.notes ? `${existingAppointment.notes}\n` : ""}Reprogramación: ${rescheduleReason}`
+              : existingAppointment.notes;
+            await supabase
+              .from("appointments")
+              .update({
+                status: "rescheduled",
+                notes: rescheduleNotes,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", existingAppointment.id);
+            await decrementSlotCount(existingAppointment.slot_id);
+          }
+
+          await supabase
+            .from("leads")
+            .update({ status: "visit_scheduled", updated_at: new Date().toISOString() })
+            .eq("id", lead.id);
+
+          const replyText = appointmentError
+            ? "Tuve un problema al agendar ese horario. ¿Quieres que te comparta otras opciones?"
+            : `Listo, agendé tu visita para ${formatAppointmentDate(
+                slot.starts_at
+              )}. ¿Quieres agregar algún detalle?`;
+
+          const { messageId, error } = await sendWhatsAppText({
+            phoneNumberId,
+            accessToken,
+            to: waId,
+            body: replyText,
+          });
+
+          if (!error) {
+            const nowIso = new Date().toISOString();
+            await supabase.from("messages").insert({
+              chat_id: chat.id,
+              chat_session_id: session?.id ?? null,
+              response_id: null,
+              wa_message_id: messageId,
+              body: replyText,
+              type: "text",
+              status: "sent",
+              sent_at: nowIso,
+              sender_name: "Bot",
+              payload: {
+                tool: "appointment_selection",
+                conversation_id: session?.conversation_id,
+                appointment_id: appointment?.id ?? null,
+                slot_id: slot.id,
+              },
+              created_at: nowIso,
+            });
+          }
+          if (chatState === "awaiting_reschedule_date") {
+            await clearChatState(chat.id);
+          }
+          return;
+        }
+      }
+
+      const fallbackSlots = await loadAvailableSlots({
+        organizationId: organization.id,
+        limit: 3,
+      });
+      const replyText = fallbackSlots.length
+        ? `Ese horario ya no está disponible. Tengo estos horarios: ${fallbackSlots
+            .map((item) => formatAppointmentDate(item.starts_at))
+            .join(" · ")}. ¿Cuál te funciona?`
+        : "Ese horario ya no está disponible. ¿Qué otra fecha u horario te funciona?";
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "appointment_selection",
+            conversation_id: session?.conversation_id,
+            fallback_slots: fallbackSlots.map((item) => item.id),
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
+    if ((leadActive || appointmentIntent) && availabilityIntent) {
+      const slots = await loadAvailableSlots({ organizationId: organization.id, limit: 3 });
+      const replyText = slots.length
+        ? `Tengo estos horarios disponibles: ${slots
+            .map((slot) => formatAppointmentDate(slot.starts_at))
+            .join(" · ")}. ¿Cuál te funciona mejor?`
+        : "Por ahora no tengo horarios disponibles. ¿Quieres que un asesor te contacte?";
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "appointment_availability",
+            conversation_id: session?.conversation_id,
+            slots: slots.map((slot) => slot.id),
+            query: latestUserMessage,
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
     const contactIntent = /(contacto|tel|teléfono|telefono|correo|email|mail|ext|extensión|extension|móvil|movil|cel|celular|número|numero|pásalo|pasalo|pasame|pásame|pásamelo|pasamelo)/i.test(
       latestUserMessage
     );
@@ -743,6 +1622,11 @@ const handleAIResponse = async ({
             share_extension: contact.share_extension,
             share_mobile: contact.share_mobile,
           })),
+          leadActive,
+          leadId: lead?.id || null,
+          leadStatus: lead?.status || null,
+          leadProfile,
+          appointmentsEnabled,
         },
       });
 
@@ -1081,19 +1965,359 @@ const handleAIResponse = async ({
       return;
     }
 
+    const scheduleCall = chatbotReply.functionCalls.find((call) => call.name === "schedule_visit");
+    if (scheduleCall) {
+      const args = parseFunctionArgs(scheduleCall.arguments) as {
+        contact_name?: string;
+        contact_phone?: string;
+        student_first_name?: string;
+        student_last_name_paternal?: string;
+        grade_interest?: string;
+        current_school?: string;
+        preferred_date?: string;
+        preferred_time?: string;
+        notes?: string;
+      };
+
+      const rescheduleReason =
+        chatState === "awaiting_reschedule_date"
+          ? (chatStateContext.reason as string | undefined)
+          : undefined;
+
+      const normalizedArgs = {
+        contact_name:
+          args.contact_name?.trim() ||
+          leadProfile?.contact_name ||
+          contactName ||
+          null,
+        contact_phone:
+          args.contact_phone?.trim() ||
+          lead?.contact_phone ||
+          chat.phone_number ||
+          waId,
+        student_first_name:
+          args.student_first_name?.trim() ||
+          lead?.student_first_name ||
+          null,
+        student_last_name_paternal:
+          args.student_last_name_paternal?.trim() ||
+          lead?.student_last_name_paternal ||
+          null,
+        grade_interest:
+          args.grade_interest?.trim() ||
+          lead?.grade_interest ||
+          null,
+        current_school:
+          args.current_school?.trim() ||
+          lead?.current_school ||
+          null,
+        preferred_date: args.preferred_date?.trim() || null,
+        preferred_time: args.preferred_time?.trim() || null,
+        notes: args.notes?.trim() || null,
+      };
+
+      const requiredFields = [
+        normalizedArgs.contact_name,
+        normalizedArgs.contact_phone,
+        normalizedArgs.student_first_name,
+        normalizedArgs.student_last_name_paternal,
+        normalizedArgs.grade_interest,
+        normalizedArgs.current_school,
+        normalizedArgs.preferred_date,
+        normalizedArgs.preferred_time,
+      ];
+
+      if (requiredFields.some((value) => !value || String(value).trim().length === 0)) {
+        const reply =
+          "Para agendar la visita necesito: nombre del contacto, teléfono, nombre del estudiante, grado, escuela actual y fecha/hora preferida. ¿Me compartes esos datos?";
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: reply,
+        });
+
+        if (!error) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session?.id ?? null,
+            response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+            wa_message_id: messageId,
+            body: reply,
+            type: "text",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: "Bot",
+            payload: {
+              tool: "schedule_visit",
+              conversation_id: session?.conversation_id,
+              status: "missing_fields",
+            },
+            created_at: nowIso,
+          });
+        }
+        return;
+      }
+
+      const resolvedContactName = normalizedArgs.contact_name || "Contacto";
+      const { first, lastPaternal } = splitName(resolvedContactName);
+
+      const contactId = await ensureContact({
+        organizationId: organization.id,
+        waId,
+        phone: normalizedArgs.contact_phone || waId,
+        name: resolvedContactName,
+        email: lead?.contact_email || null,
+      });
+
+      let leadId = lead?.id || null;
+      let existingAppointment = leadId ? await loadUpcomingAppointment(leadId) : null;
+      if (!leadId) {
+        const leadArgs: CreateLeadArgs = {
+          contact_name: resolvedContactName,
+          contact_phone: normalizedArgs.contact_phone || waId,
+          student_first_name: normalizedArgs.student_first_name || "",
+          student_last_name_paternal: normalizedArgs.student_last_name_paternal || "",
+          grade_interest: normalizedArgs.grade_interest || "",
+          current_school: normalizedArgs.current_school || null,
+          summary: normalizedArgs.notes || "Solicitud de visita de admisiones.",
+          source: "whatsapp",
+        };
+
+        leadId = await createLeadRecord({
+          organizationId: organization.id,
+          chatId: chat.id,
+          waId,
+          contactId,
+          args: leadArgs,
+        });
+      } else {
+        await supabase
+          .from("leads")
+          .update({
+            contact_first_name: first || resolvedContactName,
+            contact_last_name_paternal: lastPaternal || null,
+            contact_email: lead?.contact_email || null,
+            contact_phone: normalizedArgs.contact_phone || null,
+            student_first_name: normalizedArgs.student_first_name || null,
+            student_last_name_paternal: normalizedArgs.student_last_name_paternal || null,
+            grade_interest: normalizedArgs.grade_interest || null,
+            school_year: lead?.school_year || null,
+            current_school: normalizedArgs.current_school || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", leadId);
+      }
+
+      const slot = await findAvailableSlot({
+        organizationId: organization.id,
+        preferredDate: normalizedArgs.preferred_date,
+        preferredTime: normalizedArgs.preferred_time,
+      });
+
+      if (!slot) {
+        const alternatives = await loadAvailableSlots({
+          organizationId: organization.id,
+          preferredDate: normalizedArgs.preferred_date,
+          limit: 3,
+        });
+        const reply = alternatives.length
+          ? `No encontré un horario disponible en esa fecha. Tengo estos horarios disponibles: ${alternatives
+              .map((alt) => formatAppointmentDate(alt.starts_at))
+              .join(" · ")}. ¿Cuál te funciona?`
+          : "No encontré un horario disponible en esa fecha. ¿Qué otra fecha u horario te funciona?";
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: reply,
+        });
+        if (!error) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session?.id ?? null,
+            response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+            wa_message_id: messageId,
+            body: reply,
+            type: "text",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: "Bot",
+            payload: {
+              tool: "schedule_visit",
+              conversation_id: session?.conversation_id,
+              status: "no_slots",
+              alternative_slots: alternatives.map((alt) => alt.id),
+            },
+            created_at: nowIso,
+          });
+        }
+        return;
+      }
+
+      const { data: appointment, error: appointmentError } = await supabase
+        .from("appointments")
+        .insert({
+          organization_id: organization.id,
+          lead_id: leadId,
+          slot_id: slot.id,
+          starts_at: slot.starts_at,
+          ends_at: slot.ends_at,
+          status: "scheduled",
+          type: "visit",
+          notes: [normalizedArgs.notes, rescheduleReason ? `Reprogramación: ${rescheduleReason}` : null]
+            .filter(Boolean)
+            .join("\n") || null,
+        })
+        .select("id")
+        .single();
+
+      if (!appointmentError) {
+        await supabase
+          .from("availability_slots")
+          .update({
+            appointments_count: slot.appointments_count + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", slot.id);
+      }
+
+      if (!appointmentError && existingAppointment?.id) {
+        const rescheduleNotes = rescheduleReason
+          ? `${existingAppointment.notes ? `${existingAppointment.notes}\n` : ""}Reprogramación: ${rescheduleReason}`
+          : existingAppointment.notes;
+        await supabase
+          .from("appointments")
+          .update({
+            status: "rescheduled",
+            notes: rescheduleNotes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingAppointment.id);
+        await decrementSlotCount(existingAppointment.slot_id);
+      }
+
+      await supabase
+        .from("leads")
+        .update({ status: "visit_scheduled", updated_at: new Date().toISOString() })
+        .eq("id", leadId);
+
+      const readable = formatAppointmentDate(slot.starts_at);
+      const reply = existingAppointment?.id
+        ? `Listo, reprogramé tu visita para ${readable}. ¿Quieres agregar algún detalle?`
+        : `Listo, agendé tu visita para ${readable}. ¿Quieres agregar algún detalle?`;
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: reply,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+          wa_message_id: messageId,
+          body: reply,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "schedule_visit",
+            conversation_id: session?.conversation_id,
+            appointment_id: appointment?.id,
+          },
+          created_at: nowIso,
+        });
+      }
+
+      if (session?.conversation_id) {
+        await submitToolOutputs({
+          conversationId: session.conversation_id,
+          toolCalls: chatbotReply.functionCalls.filter((call) => call.name === "schedule_visit"),
+          output: JSON.stringify({
+            status: appointmentError ? "failed" : "scheduled",
+            appointment_id: appointment?.id,
+            slot_id: slot.id,
+          }),
+          model: organization.bot_model,
+        });
+      }
+
+      if (chatState === "awaiting_reschedule_date") {
+        await clearChatState(chat.id);
+      }
+
+      return;
+    }
+
     const leadCall = chatbotReply.functionCalls.find((call) => call.name === "create_lead");
     if (leadCall) {
       const parsedArgs = parseFunctionArgs(leadCall.arguments) as Partial<CreateLeadArgs>;
       const contactPhone =
         (parsedArgs.contact_phone as string | undefined) || chat.phone_number || waId;
+      const contactName = parsedArgs.contact_name?.trim();
 
-      if (!contactPhone || !parsedArgs.student_first_name || !parsedArgs.student_last_name_paternal || !parsedArgs.grade_interest) {
-        console.warn("Lead tool invoked without required fields");
+      if (
+        !contactPhone ||
+        !contactName ||
+        !parsedArgs.student_first_name ||
+        !parsedArgs.student_last_name_paternal ||
+        !parsedArgs.grade_interest ||
+        !parsedArgs.current_school
+      ) {
+        const missing: string[] = [];
+        if (!contactPhone) missing.push("teléfono");
+        if (!contactName) missing.push("nombre del contacto");
+        if (!parsedArgs.student_first_name) missing.push("nombre del estudiante");
+        if (!parsedArgs.student_last_name_paternal) missing.push("apellido del estudiante");
+        if (!parsedArgs.grade_interest) missing.push("grado de interés");
+        if (!parsedArgs.current_school) missing.push("escuela actual");
+
+        const reply = `Para registrar tu solicitud necesito ${missing.join(
+          ", "
+        )}. ¿Me compartes esos datos?`;
+
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: reply,
+        });
+
+        if (!error) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session?.id ?? null,
+            response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+            wa_message_id: messageId,
+            body: reply,
+            type: "text",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: "Bot",
+            payload: {
+              tool: "create_lead",
+              conversation_id: session?.conversation_id,
+              status: "missing_fields",
+              missing_fields: missing,
+            },
+            created_at: nowIso,
+          });
+        }
+
         if (session?.conversation_id) {
           await submitToolOutputs({
             conversationId: session.conversation_id,
             toolCalls: chatbotReply.functionCalls.filter((call) => call.name === "create_lead"),
-            output: JSON.stringify({ status: "invalid_fields" }),
+            output: JSON.stringify({ status: "missing_fields", missing_fields: missing }),
             model: organization.bot_model,
           });
         }
@@ -1102,17 +2326,11 @@ const handleAIResponse = async ({
 
       const leadArgs: CreateLeadArgs = {
         contact_phone: contactPhone,
-        contact_email: parsedArgs.contact_email || null,
-        contact_first_name: parsedArgs.contact_first_name || contactName || "Contacto",
-        contact_last_name_paternal: parsedArgs.contact_last_name_paternal || null,
+        contact_name: contactName,
         student_first_name: parsedArgs.student_first_name,
         student_last_name_paternal: parsedArgs.student_last_name_paternal,
-        student_middle_name: parsedArgs.student_middle_name || null,
-        student_last_name_maternal: parsedArgs.student_last_name_maternal || null,
-        student_dob: parsedArgs.student_dob || null,
         grade_interest: parsedArgs.grade_interest,
-        school_year: parsedArgs.school_year || null,
-        campus: parsedArgs.campus || null,
+        current_school: parsedArgs.current_school || null,
         summary: parsedArgs.summary || "Resumen no proporcionado",
         source: parsedArgs.source || "whatsapp",
       };
@@ -1122,8 +2340,8 @@ const handleAIResponse = async ({
           organizationId: organization.id,
           waId,
           phone: leadArgs.contact_phone,
-          name: leadArgs.contact_first_name,
-          email: leadArgs.contact_email,
+          name: contactName,
+          email: null,
         });
 
         const leadId = await createLeadRecord({
@@ -1134,11 +2352,17 @@ const handleAIResponse = async ({
           args: leadArgs,
         });
 
+        const { first: contactFirstName } = splitName(contactName);
+        const displayName = contactFirstName || contactName;
+        const leadReply = appointmentsEnabled
+          ? `Gracias${displayName ? `, ${displayName}` : ""}. ¿Te gustaría agendar una visita? Dime qué fecha y hora prefieres.`
+          : `Gracias${displayName ? `, ${displayName}` : ""}. Ya registré tu solicitud. ¿Hay algún horario que prefieras para contactarte?`;
+
         const { messageId, error } = await sendWhatsAppText({
           phoneNumberId,
           accessToken,
           to: waId,
-          body: LEAD_CONFIRMATION_TEXT,
+          body: leadReply,
         });
 
         if (error) {
@@ -1152,7 +2376,7 @@ const handleAIResponse = async ({
           chat_session_id: session.id,
           response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
           wa_message_id: messageId,
-          body: LEAD_CONFIRMATION_TEXT,
+          body: leadReply,
           type: "text",
           status: "sent",
           sent_at: nowIso,
@@ -1165,6 +2389,7 @@ const handleAIResponse = async ({
             lead_id: leadId,
             tool: "create_lead",
             lead_summary: leadArgs.summary,
+            appointments_enabled: appointmentsEnabled,
           },
           created_at: nowIso,
         });
@@ -1395,6 +2620,8 @@ export async function POST(request: Request) {
             active_session_id: (chatData as { active_session_id?: string | null })?.active_session_id ?? null,
             requested_handoff: (chatData as { requested_handoff?: boolean | null })?.requested_handoff ?? false,
             phone_number: chatData.phone_number ?? null,
+            state: (chatData as { state?: string | null })?.state ?? null,
+            state_context: (chatData as { state_context?: Record<string, any> | null })?.state_context ?? null,
           };
 
         const session = await resolveChatSession({
@@ -1512,6 +2739,8 @@ export async function POST(request: Request) {
           if (message.type === "text" && message.text?.body) {
             const capabilities = await loadBotCapabilities(orgData.id);
             const directoryContacts = await loadDirectoryContacts(orgData.id);
+            const lead = await loadLatestLeadByWaId(orgData.id, waId);
+            const leadActive = Boolean(lead && ACTIVE_LEAD_STATUSES.has(lead.status));
             await handleAIResponse({
               chat: chatRecord,
               organization: {
@@ -1532,6 +2761,8 @@ export async function POST(request: Request) {
               capabilities,
               directoryContacts,
               botDirectoryEnabled: Boolean(orgData.bot_directory_enabled),
+              lead,
+              leadActive,
             });
           }
       }
