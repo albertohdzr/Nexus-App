@@ -13,7 +13,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my_secure_token";
 const SESSION_TIMEOUT_MS = 15 * 60_000;
-const SECOND_MESSAGE_IGNORE_WINDOW_MS = 5_000;
+const MESSAGE_AGGREGATION_WINDOW_MS = 5_000;
 const SUGGESTED_SLOTS_TTL_MS = 15 * 60_000;
 
 type ChatRecord = {
@@ -1077,7 +1077,11 @@ const handleAIResponse = async ({
     );
     const cancelIntent = /(cancel|anular)/i.test(latestUserMessage);
     const rescheduleIntent = /(reprogram|reagendar|posponer|cambiar)/i.test(latestUserMessage);
-    const optionSelection = parseOptionSelection(latestUserMessage);
+    const suggestedAt = chatStateContext.last_suggested_at as string | undefined;
+    const suggestedAtMs = suggestedAt ? new Date(suggestedAt).getTime() : null;
+    const hasRecentSuggestions =
+      suggestedAtMs !== null && Date.now() - suggestedAtMs <= SUGGESTED_SLOTS_TTL_MS;
+    const optionSelection = hasRecentSuggestions ? parseOptionSelection(latestUserMessage) : null;
     const appointmentStatusIntent = /(cuando era mi cita|cu[aá]ndo era mi cita|cu[aá]ndo es mi cita|mi cita|cancelad|cancelaste)/i.test(
       latestUserMessage
     );
@@ -1518,7 +1522,7 @@ const handleAIResponse = async ({
             ? "Tuve un problema al agendar ese horario. ¿Quieres que te comparta otras opciones?"
             : `Listo, agendé tu visita para ${formatAppointmentDate(
                 slot.starts_at
-              )}. ¿Quieres agregar algún detalle?`;
+              )}. Te enviaré un recordatorio con la información para llegar. ¿Me compartes un correo para enviarte los detalles?`;
 
           const { messageId, error } = await sendWhatsAppText({
             phoneNumberId,
@@ -1654,10 +1658,23 @@ const handleAIResponse = async ({
       return;
     }
 
-    const contactIntent = /(contacto|tel|teléfono|telefono|correo|email|mail|ext|extensión|extension|móvil|movil|cel|celular|número|numero|pásalo|pasalo|pasame|pásame|pásamelo|pasamelo)/i.test(
+    const contactRequestIntent =
+      /(contacto|p[aá]same|p[aá]salo|p[aá]samelo|comp[aá]rteme|dame|me puedes|podr[ií]as|quiero hablar con|quiero comunicarme con)/i.test(
+        latestUserMessage
+      ) ||
+      /(tel[eé]fono de|correo de|email de|extensi[oó]n de|m[oó]vil de|celular de|n[uú]mero de)/i.test(
+        latestUserMessage
+      );
+    const roleMentioned = /(caja|cajero|admisiones|direcci[oó]n|coordinaci[oó]n|recepci[oó]n|soporte)/i.test(
       latestUserMessage
     );
-    const shouldHandleDirectory = botDirectoryEnabled && contactIntent;
+    const isProvidingPhone =
+      /\b\d{7,}\b/.test(latestUserMessage) ||
+      /(mi tel[eé]fono|mi n[uú]mero|tel[eé]fono es|telefono es|tel es|tel[eé]fono est[aá] bien|telefono est[aá] bien)/i.test(
+        latestUserMessage
+      );
+    const shouldHandleDirectory =
+      botDirectoryEnabled && (contactRequestIntent || roleMentioned) && !isProvidingPhone;
 
     if (shouldHandleDirectory) {
       const allowedContacts = directoryContacts.filter((contact) => contact.allow_bot_share);
@@ -1801,9 +1818,22 @@ const handleAIResponse = async ({
     if (directoryCall) {
       const args = parseFunctionArgs(directoryCall.arguments) as { query?: string };
       const normalizedQuery = (args.query || "").trim().toLowerCase();
-      const hasContactIntent = /(contacto|tel|teléfono|telefono|correo|email|mail|ext|extensión|extension|móvil|movil|cel|celular|número|numero)/i.test(
-        args.query || ""
+      const userContactIntent =
+        /(contacto|p[aá]same|p[aá]salo|p[aá]samelo|comp[aá]rteme|dame|me puedes|podr[ií]as|quiero hablar con|quiero comunicarme con)/i.test(
+          latestUserMessage
+        ) ||
+        /(tel[eé]fono de|correo de|email de|extensi[oó]n de|m[oó]vil de|celular de|n[uú]mero de)/i.test(
+          latestUserMessage
+        );
+      const userRoleMentioned = /(caja|cajero|admisiones|direcci[oó]n|coordinaci[oó]n|recepci[oó]n|soporte)/i.test(
+        latestUserMessage
       );
+      const isProvidingPhone =
+        /\b\d{7,}\b/.test(latestUserMessage) ||
+        /(mi tel[eé]fono|mi n[uú]mero|tel[eé]fono es|telefono es|tel es|tel[eé]fono est[aá] bien|telefono est[aá] bien)/i.test(
+          latestUserMessage
+        );
+      const hasContactIntent = userContactIntent || userRoleMentioned;
       const allowedContacts = directoryContacts.filter((contact) => contact.allow_bot_share);
       const match =
         allowedContacts.find((contact) =>
@@ -1816,6 +1846,20 @@ const handleAIResponse = async ({
 
       const fallback =
         "Por ahora no tengo permiso para compartir ese contacto. Si quieres, te canalizo con un asesor.";
+
+      if (!hasContactIntent || isProvidingPhone) {
+        if (session?.conversation_id) {
+          await submitToolOutputs({
+            conversationId: session.conversation_id,
+            toolCalls: chatbotReply.functionCalls.filter(
+              (call) => call.name === "get_directory_contact"
+            ),
+            output: JSON.stringify({ status: "ignored" }),
+            model: organization.bot_model,
+          });
+        }
+        return;
+      }
 
       if (!botDirectoryEnabled || !match) {
         const { messageId, error } = await sendWhatsAppText({
@@ -2279,6 +2323,14 @@ const handleAIResponse = async ({
             },
             created_at: nowIso,
           });
+          await updateChatContext({
+            chatId: chat.id,
+            currentContext: chatStateContext,
+            patch: {
+              last_suggested_slots: alternatives.map((alt) => alt.id),
+              last_suggested_at: nowIso,
+            },
+          });
         }
         return;
       }
@@ -2332,8 +2384,8 @@ const handleAIResponse = async ({
 
       const readable = formatAppointmentDate(slot.starts_at);
       const reply = existingAppointment?.id
-        ? `Listo, reprogramé tu visita para ${readable}. ¿Quieres agregar algún detalle?`
-        : `Listo, agendé tu visita para ${readable}. ¿Quieres agregar algún detalle?`;
+        ? `Listo, reprogramé tu visita para ${readable}. Te enviaré un recordatorio con la información para llegar. ¿Me compartes un correo para enviarte los detalles?`
+        : `Listo, agendé tu visita para ${readable}. Te enviaré un recordatorio con la información para llegar. ¿Me compartes un correo para enviarte los detalles?`;
 
       const { messageId, error } = await sendWhatsAppText({
         phoneNumberId,
@@ -2692,54 +2744,60 @@ export async function POST(request: Request) {
     const value = body.entry?.[0]?.changes?.[0]?.value as WhatsAppValue | undefined;
 
     if (value) {
-      const message = value.messages?.[0];
+      const messages = Array.isArray(value.messages) ? [...value.messages] : [];
 
-      if (message) {
+      if (messages.length) {
         const contact = value.contacts ? value.contacts[0] : null;
-
-        const waId = contact?.wa_id ?? message.from ?? "";
-        const name = contact?.profile?.name ?? waId;
         const phoneNumber = value.metadata.display_phone_number;
         const phoneNumberId = value.metadata.phone_number_id;
+        const orderedMessages = messages.sort((a, b) => {
+          const aTime = a.timestamp ? parseInt(a.timestamp, 10) : 0;
+          const bTime = b.timestamp ? parseInt(b.timestamp, 10) : 0;
+          return aTime - bTime;
+        });
 
-        if (!waId) {
-          console.error("Missing waId in incoming message");
-          return new NextResponse("EVENT_RECEIVED", { status: 200 });
-        }
-
-        // 1. Find Organization
-          const { data: orgData, error: orgError } = await supabase
-            .from("organizations")
-            .select("id, name, bot_name, bot_instructions, bot_tone, bot_language, bot_model, bot_directory_enabled")
-            .eq("phone_number_id", phoneNumberId)
-            .single();
+        const { data: orgData, error: orgError } = await supabase
+          .from("organizations")
+          .select("id, name, bot_name, bot_instructions, bot_tone, bot_language, bot_model, bot_directory_enabled")
+          .eq("phone_number_id", phoneNumberId)
+          .single();
 
         if (orgError || !orgData) {
           console.error("Organization not found for phone_number_id:", phoneNumberId);
-          // Acknowledge but log
           return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
-        // 2. Upsert Chat linked to Organization
-        const { data: chatData, error: chatError } = await supabase
-          .from("chats")
-          .upsert(
-            {
-              wa_id: waId,
-              name: name,
-              phone_number: phoneNumber,
-              organization_id: orgData.id,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "wa_id,organization_id" },
-          )
-          .select()
-          .single();
+        const lastMessageIdInBatch =
+          orderedMessages[orderedMessages.length - 1]?.id ?? null;
 
-        if (chatError || !chatData) {
-          console.error("Error upserting chat:", chatError);
-          return new NextResponse("Internal Server Error", { status: 500 });
-        }
+        for (const message of orderedMessages) {
+          const waId = contact?.wa_id ?? message.from ?? "";
+          const name = contact?.profile?.name ?? waId;
+
+          if (!waId) {
+            console.error("Missing waId in incoming message");
+            continue;
+          }
+
+          const { data: chatData, error: chatError } = await supabase
+            .from("chats")
+            .upsert(
+              {
+                wa_id: waId,
+                name: name,
+                phone_number: phoneNumber,
+                organization_id: orgData.id,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "wa_id,organization_id" },
+            )
+            .select()
+            .single();
+
+          if (chatError || !chatData) {
+            console.error("Error upserting chat:", chatError);
+            continue;
+          }
 
           const chatRecord: ChatRecord = {
             id: chatData.id,
@@ -2752,180 +2810,190 @@ export async function POST(request: Request) {
             state_context: (chatData as { state_context?: Record<string, any> | null })?.state_context ?? null,
           };
 
-        const session = await resolveChatSession({
-          chat: chatRecord,
-          organizationName: orgData.name,
-        });
+          const session = await resolveChatSession({
+            chat: chatRecord,
+            organizationName: orgData.name,
+          });
 
-        let mediaUrl: string | undefined;
-        let mediaPath: string | undefined;
-        const isImage = message.type === "image" && message.image?.id;
-        const isDocument = message.type === "document" && message.document?.id;
-        const isAudio = message.type === "audio" && message.audio?.id;
-        const mediaId = isImage
-          ? message.image?.id
-          : isDocument
-          ? message.document?.id
-          : isAudio
-          ? message.audio?.id
-          : undefined;
-        const mediaMime = isImage
-          ? message.image?.mime_type
-          : isDocument
-          ? message.document?.mime_type
-          : isAudio
-          ? message.audio?.mime_type
-          : undefined;
-        const mediaFileName = isDocument ? message.document?.filename : undefined;
-        const mediaCaption = isImage ? message.image?.caption : undefined;
+          let mediaUrl: string | undefined;
+          let mediaPath: string | undefined;
+          const isImage = message.type === "image" && message.image?.id;
+          const isDocument = message.type === "document" && message.document?.id;
+          const isAudio = message.type === "audio" && message.audio?.id;
+          const mediaId = isImage
+            ? message.image?.id
+            : isDocument
+            ? message.document?.id
+            : isAudio
+            ? message.audio?.id
+            : undefined;
+          const mediaMime = isImage
+            ? message.image?.mime_type
+            : isDocument
+            ? message.document?.mime_type
+            : isAudio
+            ? message.audio?.mime_type
+            : undefined;
+          const mediaFileName = isDocument ? message.document?.filename : undefined;
+          const mediaCaption = isImage ? message.image?.caption : undefined;
 
-        // If it's media (image, document, audio), try to download and store in Supabase
-        if (mediaId) {
-          try {
-            const metaResponse = await fetch(
-              `https://graph.facebook.com/v21.0/${mediaId}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
-                },
-              }
-            );
-            if (metaResponse.ok) {
-              const meta = await metaResponse.json();
-              const url = meta.url as string | undefined;
-              const mimeType = meta.mime_type as string | undefined;
-
-              if (url) {
-                const mediaResponse = await fetch(url, {
+          if (mediaId) {
+            try {
+              const metaResponse = await fetch(
+                `https://graph.facebook.com/v21.0/${mediaId}`,
+                {
                   headers: {
                     Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
                   },
-                });
-                if (mediaResponse.ok) {
-                  const arrayBuffer = await mediaResponse.arrayBuffer();
-                  const storagePath = `chats/${chatRecord.id}/${mediaId}-${mediaFileName || "file"}`;
-                  const { path: storedPath, error: storageError } = await uploadToStorage({
-                    file: Buffer.from(arrayBuffer),
-                    path: storagePath,
-                    contentType: mimeType,
+                }
+              );
+              if (metaResponse.ok) {
+                const meta = await metaResponse.json();
+                const url = meta.url as string | undefined;
+                const mimeType = meta.mime_type as string | undefined;
+
+                if (url) {
+                  const mediaResponse = await fetch(url, {
+                    headers: {
+                      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                    },
                   });
-                  if (storageError) {
-                    console.error("Storage upload error (inbound media):", storageError);
-                  } else {
-                    mediaPath = storedPath ?? storagePath;
-                    mediaUrl = `/api/storage/media?path=${encodeURIComponent(mediaPath)}`;
+                  if (mediaResponse.ok) {
+                    const arrayBuffer = await mediaResponse.arrayBuffer();
+                    const storagePath = `chats/${chatRecord.id}/${mediaId}-${mediaFileName || "file"}`;
+                    const { path: storedPath, error: storageError } = await uploadToStorage({
+                      file: Buffer.from(arrayBuffer),
+                      path: storagePath,
+                      contentType: mimeType,
+                    });
+                    if (storageError) {
+                      console.error("Storage upload error (inbound media):", storageError);
+                    } else {
+                      mediaPath = storedPath ?? storagePath;
+                      mediaUrl = `/api/storage/media?path=${encodeURIComponent(mediaPath)}`;
+                    }
                   }
                 }
               }
+            } catch (storageErr) {
+              console.error("Error downloading/uploading inbound media:", storageErr);
             }
-          } catch (storageErr) {
-            console.error("Error downloading/uploading inbound media:", storageErr);
           }
-        }
 
-        const messageBody =
-          message.text?.body ||
-          message.image?.caption ||
-          message.document?.filename ||
-          (message.audio ? "Mensaje de voz" : undefined) ||
-          "[Media/Other]";
+          const messageBody =
+            message.text?.body ||
+            message.image?.caption ||
+            message.document?.filename ||
+            (message.audio ? "Mensaje de voz" : undefined) ||
+            "[Media/Other]";
 
-        const messageTimestampMs = message.timestamp
-          ? parseInt(message.timestamp, 10) * 1000
-          : Date.now();
-        const messageTimestampIso = new Date(messageTimestampMs).toISOString();
-        const { data: lastReceivedMessage } = await supabase
-          .from("messages")
-          .select("wa_timestamp, created_at, body")
-          .eq("chat_id", chatRecord.id)
-          .eq("status", "received")
-          .order("wa_timestamp", { ascending: false, nullsFirst: false })
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        const lastReceivedTimestampMs = lastReceivedMessage?.wa_timestamp
-          ? new Date(lastReceivedMessage.wa_timestamp).getTime()
-          : lastReceivedMessage?.created_at
-          ? new Date(lastReceivedMessage.created_at).getTime()
-          : null;
-        const lastBody = (lastReceivedMessage?.body || "").trim().toLowerCase();
-        const currentBody = (messageBody || "").trim().toLowerCase();
-        const shouldIgnoreAi =
-          lastReceivedTimestampMs !== null &&
-          lastBody.length > 0 &&
-          lastBody === currentBody &&
-          messageTimestampMs >= lastReceivedTimestampMs &&
-          messageTimestampMs - lastReceivedTimestampMs <= SECOND_MESSAGE_IGNORE_WINDOW_MS;
+          const messageTimestampMs = message.timestamp
+            ? parseInt(message.timestamp, 10) * 1000
+            : Date.now();
+          const messageTimestampIso = new Date(messageTimestampMs).toISOString();
 
-        // 3. Insert Message
-        const { error: messageError } = await supabase.from("messages").insert({
-          chat_id: chatRecord.id,
-          chat_session_id: session?.id,
-          wa_message_id: message.id,
-          body: messageBody,
-          type: message.type,
-          status: "received",
-          payload: {
-            ...message,
-            media_id: mediaId,
-            media_mime_type: mediaMime,
-            media_file_name: mediaFileName,
-            media_caption: mediaCaption,
-            voice: message.audio?.voice,
-            conversation_id: session?.conversation_id,
-          },
-          wa_timestamp: messageTimestampIso,
-          sender_name: name,
-          media_id: mediaId,
-          media_path: mediaPath,
-          media_url: mediaUrl,
-          media_mime_type: mediaMime,
-          created_at: messageTimestampIso,
-        });
-
-        if (messageError) {
-          console.error("Error inserting message:", messageError);
-        }
-
-        if (session?.id) {
-          const { error: sessionActivityError } = await supabase
-            .from("chat_sessions")
-            .update({ updated_at: messageTimestampIso })
-            .eq("id", session.id);
-
-          if (sessionActivityError) {
-            console.error("Error updating chat session activity:", sessionActivityError);
-          }
-        }
-
-        if (message.type === "text" && message.text?.body && !shouldIgnoreAi) {
-          const capabilities = await loadBotCapabilities(orgData.id);
-          const directoryContacts = await loadDirectoryContacts(orgData.id);
-          const lead = await loadLatestLeadByWaId(orgData.id, waId);
-          const leadActive = Boolean(lead && ACTIVE_LEAD_STATUSES.has(lead.status));
-          await handleAIResponse({
-            chat: chatRecord,
-            organization: {
-              id: orgData.id,
-              name: orgData.name,
-              bot_name: orgData.bot_name,
-              bot_instructions: orgData.bot_instructions,
-              bot_tone: orgData.bot_tone,
-              bot_language: orgData.bot_language,
-              bot_model: orgData.bot_model,
-              bot_directory_enabled: orgData.bot_directory_enabled,
+          const { error: messageError } = await supabase.from("messages").insert({
+            chat_id: chatRecord.id,
+            chat_session_id: session?.id,
+            wa_message_id: message.id,
+            body: messageBody,
+            type: message.type,
+            status: "received",
+            payload: {
+              ...message,
+              media_id: mediaId,
+              media_mime_type: mediaMime,
+              media_file_name: mediaFileName,
+              media_caption: mediaCaption,
+              voice: message.audio?.voice,
+              conversation_id: session?.conversation_id,
             },
-            session,
-            waId,
-            phoneNumberId,
-            latestUserMessage: message.text.body,
-            contactName: name,
-            capabilities,
-            directoryContacts,
-            botDirectoryEnabled: Boolean(orgData.bot_directory_enabled),
-            lead,
-            leadActive,
+            wa_timestamp: messageTimestampIso,
+            sender_name: name,
+            media_id: mediaId,
+            media_path: mediaPath,
+            media_url: mediaUrl,
+            media_mime_type: mediaMime,
+            created_at: messageTimestampIso,
           });
+
+          if (messageError) {
+            console.error("Error inserting message:", messageError);
+          }
+
+          if (session?.id) {
+            const { error: sessionActivityError } = await supabase
+              .from("chat_sessions")
+              .update({ updated_at: messageTimestampIso })
+              .eq("id", session.id);
+
+            if (sessionActivityError) {
+              console.error("Error updating chat session activity:", sessionActivityError);
+            }
+          }
+
+          if (
+            message.type === "text" &&
+            message.text?.body &&
+            message.id === lastMessageIdInBatch
+          ) {
+            const windowStartIso = new Date(
+              messageTimestampMs - MESSAGE_AGGREGATION_WINDOW_MS
+            ).toISOString();
+            const { data: recentMessages } = await supabase
+              .from("messages")
+              .select("wa_message_id, body, wa_timestamp, created_at")
+              .eq("chat_id", chatRecord.id)
+              .eq("status", "received")
+              .eq("type", "text")
+              .gte("wa_timestamp", windowStartIso)
+              .order("wa_timestamp", { ascending: true, nullsFirst: false })
+              .order("created_at", { ascending: true })
+              .limit(10);
+
+            const sortedMessages = recentMessages || [];
+            const aggregatedInput = sortedMessages
+              .map((item) => (item.body || "").trim())
+              .filter(Boolean)
+              .reduce<string[]>((acc, item) => {
+                const last = acc[acc.length - 1];
+                if (last?.toLowerCase() !== item.toLowerCase()) {
+                  acc.push(item);
+                }
+                return acc;
+              }, [])
+              .join("\n");
+
+            if (aggregatedInput) {
+              const capabilities = await loadBotCapabilities(orgData.id);
+              const directoryContacts = await loadDirectoryContacts(orgData.id);
+              const lead = await loadLatestLeadByWaId(orgData.id, waId);
+              const leadActive = Boolean(lead && ACTIVE_LEAD_STATUSES.has(lead.status));
+              await handleAIResponse({
+                chat: chatRecord,
+                organization: {
+                  id: orgData.id,
+                  name: orgData.name,
+                  bot_name: orgData.bot_name,
+                  bot_instructions: orgData.bot_instructions,
+                  bot_tone: orgData.bot_tone,
+                  bot_language: orgData.bot_language,
+                  bot_model: orgData.bot_model,
+                  bot_directory_enabled: orgData.bot_directory_enabled,
+                },
+                session,
+                waId,
+                phoneNumberId,
+                latestUserMessage: aggregatedInput,
+                contactName: name,
+                capabilities,
+                directoryContacts,
+                botDirectoryEnabled: Boolean(orgData.bot_directory_enabled),
+                lead,
+                leadActive,
+              });
+            }
+          }
         }
       }
 
