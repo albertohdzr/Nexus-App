@@ -114,7 +114,7 @@ const CREATE_LEAD_TOOL: ResponseTool = {
   type: "function",
   name: "create_lead",
   description:
-    "Crea un lead cuando ya tengas los datos mínimos. No pidas datos extra si no los mencionan. No llames la función hasta tener los campos requeridos.",
+    "Crea un registro de interés cuando ya tengas los datos mínimos. No pidas datos extra si no los mencionan. No llames la función hasta tener los campos requeridos.",
   parameters: {
     type: "object",
     properties: {
@@ -148,7 +148,7 @@ const CREATE_LEAD_TOOL: ResponseTool = {
       },
       source: {
         type: "string",
-        description: "Fuente del lead, por defecto whatsapp.",
+        description: "Fuente del registro, por defecto whatsapp.",
       },
     },
     required: [
@@ -300,7 +300,7 @@ const SCHEDULE_VISIT_TOOL: ResponseTool = {
 
 const BASE_INSTRUCTIONS = `
 Eres un asistente de admisiones. Si el usuario pide hablar con un humano, usa la función request_handoff.
-Si el usuario pide informes o quiere aplicar, recolecta datos para crear un lead usando create_lead:
+Si el usuario pide informes o quiere aplicar, recolecta datos para crear un registro de interés usando create_lead:
 - Teléfono de contacto (obligatorio, incluye lada).
 - Nombre del estudiante y apellido paterno (obligatorio).
 - Grado de interés y escuela actual (obligatorio).
@@ -309,6 +309,12 @@ Si el usuario pide informes o quiere aplicar, recolecta datos para crear un lead
 Solo llama create_lead cuando tengas los campos requeridos y sean claros. Mientras falten datos, haz preguntas cortas para obtenerlos.
 No solicites apellido materno, email o fecha de nacimiento si el usuario no los menciona.
 Responde en el idioma preferido si se indica, y mantén el tono configurado.
+Nunca uses la palabra "lead" con el usuario; di "registro", "solicitud" o "datos de inscripción".
+Si hay un registro activo (prospecto), no compartas colegiaturas, costos, cuotas o mensualidades por chat; esa información solo se da en la visita.
+Si hay un registro activo y el usuario insiste con colegiaturas/costos, usa request_handoff para canalizarlo con un asesor.
+Si NO hay registro activo y preguntan por pagos/colegiaturas, puedes usar get_finance_info según la configuración.
+No pidas al usuario que escriba un resumen; tú generas el resumen internamente.
+En el primer mensaje de la conversación, preséntate con el nombre del colegio.
 
 Estilo de conversación:
 - No repitas el saludo si ya saludaste en la sesión; solo al inicio o si el usuario saluda.
@@ -319,8 +325,8 @@ Estilo de conversación:
 - No ofrezcas contacto si la pregunta ya quedó resuelta y no lo pidió explícitamente.
 - Si el usuario quiere informes de inscripción, guía la conversación para obtener datos y propone agendar una visita.
 - Si está disponible, usa schedule_visit solo cuando ya tengas todos los datos requeridos.
-- Si hay un lead activo, prioriza seguimiento de admisiones y evita temas financieros.
-- Si hay un lead activo y el usuario comparte fecha u horario, asume que es para agendar o reprogramar la visita.
+- Si hay un registro activo, prioriza seguimiento de admisiones y evita temas financieros.
+- Si hay un registro activo y el usuario comparte fecha u horario, asume que es para agendar o reprogramar la visita.
 - No repitas preguntas ya respondidas; usa la información previa del chat.
 `;
 
@@ -431,17 +437,18 @@ const generateChatbotReply = async ({
     context.botDirectoryEnabled &&
       (context.directoryContacts || []).some((contact) => contact.allow_bot_share)
   );
-  const hasFinance = context.capabilities?.some((cap) => (cap.finance?.length || 0) > 0);
   const hasComplaints = context.capabilities?.some(
     (cap) =>
       cap.type === "complaint" ||
       ((cap.metadata as { allow_complaints?: boolean } | null)?.allow_complaints === true)
   );
+  const hasFinance = context.capabilities?.some((cap) => (cap.finance?.length || 0) > 0);
+  const allowFinance = !context.leadActive && hasFinance;
 
   if (hasDirectoryContacts) {
     tools.push(GET_DIRECTORY_CONTACT_TOOL);
   }
-  if (hasFinance) {
+  if (allowFinance) {
     tools.push(GET_FINANCE_TOOL);
   }
   if (hasComplaints) {
@@ -454,7 +461,7 @@ const generateChatbotReply = async ({
   const capabilityBlocks =
     context.capabilities?.map((cap) => {
       const finance =
-        cap.finance && cap.finance.length
+        allowFinance && cap.finance && cap.finance.length
           ? `Datos: ${cap.finance.map((f) => `${f.item}: ${f.value}`).join("; ")}`
           : null;
 
@@ -473,13 +480,13 @@ const generateChatbotReply = async ({
     : "Directorio no disponible para el bot.";
 
   const leadSummary = context.leadActive
-    ? `Lead activo detectado (id: ${context.leadId || "N/A"}, status: ${
+    ? `Registro activo detectado (id: ${context.leadId || "N/A"}, status: ${
         context.leadStatus || "N/A"
       }). Prioriza seguimiento y citas.`
-    : "No hay lead activo detectado.";
+    : "No hay registro activo detectado.";
 
   const leadProfile = context.leadProfile
-    ? `Datos del lead: contacto ${context.leadProfile.contact_name || "N/A"} (${
+    ? `Datos del registro: contacto ${context.leadProfile.contact_name || "N/A"} (${
         context.leadProfile.contact_phone || "N/A"
       }${context.leadProfile.contact_email ? `, ${context.leadProfile.contact_email}` : ""}), estudiante ${
         context.leadProfile.student_first_name || "N/A"

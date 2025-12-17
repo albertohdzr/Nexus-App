@@ -12,7 +12,9 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!; // Use servic
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "my_secure_token";
-const SESSION_TIMEOUT_MS = 60_000;
+const SESSION_TIMEOUT_MS = 15 * 60_000;
+const SECOND_MESSAGE_IGNORE_WINDOW_MS = 5_000;
+const SUGGESTED_SLOTS_TTL_MS = 15 * 60_000;
 
 type ChatRecord = {
   id: string;
@@ -123,9 +125,14 @@ type CreateLeadArgs = {
 };
 
 const getLastSessionActivity = (session: ChatSessionRecord) => {
-  const lastTimestamp =
-    session.last_response_at || session.updated_at || session.created_at;
-  return lastTimestamp ? new Date(lastTimestamp).getTime() : null;
+  const timestamps = [
+    session.last_response_at,
+    session.updated_at,
+    session.created_at,
+  ]
+    .filter(Boolean)
+    .map((value) => new Date(value as string).getTime());
+  return timestamps.length ? Math.max(...timestamps) : null;
 };
 
 const isSessionExpired = (session: ChatSessionRecord) => {
@@ -209,6 +216,29 @@ const clearChatState = async (chatId: string) => {
 
   if (error) {
     console.error("Error clearing chat state", error);
+  }
+};
+
+const updateChatContext = async ({
+  chatId,
+  currentContext,
+  patch,
+}: {
+  chatId: string;
+  currentContext?: Record<string, any> | null;
+  patch: Record<string, unknown>;
+}) => {
+  const nextContext = { ...(currentContext || {}), ...patch };
+  const { error } = await supabase
+    .from("chats")
+    .update({
+      state_context: nextContext,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", chatId);
+
+  if (error) {
+    console.error("Error updating chat context", error);
   }
 };
 
@@ -1159,6 +1189,72 @@ const handleAIResponse = async ({
       return;
     }
 
+    const costInquiryIntent = /(colegiatur|colegiatura|costos?|precio|cuota|mensualidad|cuesta)/i.test(
+      latestUserMessage
+    );
+    const costInquiryCount = Number(chatStateContext.cost_inquiry_count || 0);
+
+    if (leadActive && costInquiryIntent) {
+      const nextCount = costInquiryCount + 1;
+      await updateChatContext({
+        chatId: chat.id,
+        currentContext: chatStateContext,
+        patch: { cost_inquiry_count: nextCount },
+      });
+
+      if (nextCount >= 2) {
+        await handleHandoff();
+        return;
+      }
+
+      const replyText =
+        "Las colegiaturas y costos se comparten durante la visita para darte toda la información completa. ¿Te gustaría agendar una visita?";
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "cost_deflection",
+            conversation_id: session?.conversation_id,
+            cost_inquiry_count: nextCount,
+          },
+          created_at: nowIso,
+        });
+      }
+      return;
+    }
+
+    if (leadActive && costInquiryCount > 0) {
+      await updateChatContext({
+        chatId: chat.id,
+        currentContext: chatStateContext,
+        patch: { cost_inquiry_count: 0 },
+      });
+    }
+
+    if (!leadActive && costInquiryCount > 0) {
+      await updateChatContext({
+        chatId: chat.id,
+        currentContext: chatStateContext,
+        patch: { cost_inquiry_count: 0 },
+      });
+    }
+
     if (whoIsAppointmentForIntent && leadActive) {
       const upcoming = lead?.id ? await loadUpcomingAppointment(lead.id) : null;
       const studentName = [lead?.student_first_name, lead?.student_last_name_paternal]
@@ -1337,7 +1433,16 @@ const handleAIResponse = async ({
         return;
       }
 
-      const suggestedSlots = await loadLatestSuggestedSlots(chat.id);
+      const contextSuggestedSlots = Array.isArray(chatStateContext.last_suggested_slots)
+        ? (chatStateContext.last_suggested_slots as string[])
+        : [];
+      const suggestedAt = chatStateContext.last_suggested_at as string | undefined;
+      const suggestedAtMs = suggestedAt ? new Date(suggestedAt).getTime() : null;
+      const contextSlotsFresh =
+        suggestedAtMs !== null && Date.now() - suggestedAtMs <= SUGGESTED_SLOTS_TTL_MS;
+      const suggestedSlots = contextSlotsFresh && contextSuggestedSlots.length
+        ? contextSuggestedSlots
+        : await loadLatestSuggestedSlots(chat.id);
       const slotId = suggestedSlots[optionSelection];
       if (slotId) {
         const { data: slot } = await supabase
@@ -1446,6 +1551,11 @@ const handleAIResponse = async ({
           if (chatState === "awaiting_reschedule_date") {
             await clearChatState(chat.id);
           }
+          await updateChatContext({
+            chatId: chat.id,
+            currentContext: chatStateContext,
+            patch: { last_suggested_slots: null, last_suggested_at: null },
+          });
           return;
         }
       }
@@ -1485,6 +1595,14 @@ const handleAIResponse = async ({
           },
           created_at: nowIso,
         });
+        await updateChatContext({
+          chatId: chat.id,
+          currentContext: chatStateContext,
+          patch: {
+            last_suggested_slots: fallbackSlots.map((item) => item.id),
+            last_suggested_at: nowIso,
+          },
+        });
       }
       return;
     }
@@ -1523,6 +1641,14 @@ const handleAIResponse = async ({
             query: latestUserMessage,
           },
           created_at: nowIso,
+        });
+        await updateChatContext({
+          chatId: chat.id,
+          currentContext: chatStateContext,
+          patch: {
+            last_suggested_slots: slots.map((slot) => slot.id),
+            last_suggested_at: nowIso,
+          },
         });
       }
       return;
@@ -2331,7 +2457,9 @@ const handleAIResponse = async ({
         student_last_name_paternal: parsedArgs.student_last_name_paternal,
         grade_interest: parsedArgs.grade_interest,
         current_school: parsedArgs.current_school || null,
-        summary: parsedArgs.summary || "Resumen no proporcionado",
+        summary:
+          parsedArgs.summary ||
+          `Solicitud de inscripción para ${parsedArgs.student_first_name} ${parsedArgs.student_last_name_paternal} (${parsedArgs.grade_interest}), escuela actual ${parsedArgs.current_school}.`,
         source: parsedArgs.source || "whatsapp",
       };
 
@@ -2705,6 +2833,29 @@ export async function POST(request: Request) {
         const messageTimestampMs = message.timestamp
           ? parseInt(message.timestamp, 10) * 1000
           : Date.now();
+        const messageTimestampIso = new Date(messageTimestampMs).toISOString();
+        const { data: lastReceivedMessage } = await supabase
+          .from("messages")
+          .select("wa_timestamp, created_at, body")
+          .eq("chat_id", chatRecord.id)
+          .eq("status", "received")
+          .order("wa_timestamp", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const lastReceivedTimestampMs = lastReceivedMessage?.wa_timestamp
+          ? new Date(lastReceivedMessage.wa_timestamp).getTime()
+          : lastReceivedMessage?.created_at
+          ? new Date(lastReceivedMessage.created_at).getTime()
+          : null;
+        const lastBody = (lastReceivedMessage?.body || "").trim().toLowerCase();
+        const currentBody = (messageBody || "").trim().toLowerCase();
+        const shouldIgnoreAi =
+          lastReceivedTimestampMs !== null &&
+          lastBody.length > 0 &&
+          lastBody === currentBody &&
+          messageTimestampMs >= lastReceivedTimestampMs &&
+          messageTimestampMs - lastReceivedTimestampMs <= SECOND_MESSAGE_IGNORE_WINDOW_MS;
 
         // 3. Insert Message
         const { error: messageError } = await supabase.from("messages").insert({
@@ -2723,48 +2874,59 @@ export async function POST(request: Request) {
             voice: message.audio?.voice,
             conversation_id: session?.conversation_id,
           },
-          wa_timestamp: new Date(messageTimestampMs).toISOString(),
+          wa_timestamp: messageTimestampIso,
           sender_name: name,
           media_id: mediaId,
           media_path: mediaPath,
           media_url: mediaUrl,
           media_mime_type: mediaMime,
-          created_at: new Date(messageTimestampMs).toISOString(),
+          created_at: messageTimestampIso,
         });
 
         if (messageError) {
           console.error("Error inserting message:", messageError);
         }
 
-          if (message.type === "text" && message.text?.body) {
-            const capabilities = await loadBotCapabilities(orgData.id);
-            const directoryContacts = await loadDirectoryContacts(orgData.id);
-            const lead = await loadLatestLeadByWaId(orgData.id, waId);
-            const leadActive = Boolean(lead && ACTIVE_LEAD_STATUSES.has(lead.status));
-            await handleAIResponse({
-              chat: chatRecord,
-              organization: {
-                id: orgData.id,
-                name: orgData.name,
-                bot_name: orgData.bot_name,
-                bot_instructions: orgData.bot_instructions,
-                bot_tone: orgData.bot_tone,
-                bot_language: orgData.bot_language,
-                bot_model: orgData.bot_model,
-                bot_directory_enabled: orgData.bot_directory_enabled,
-              },
-              session,
-              waId,
-              phoneNumberId,
-              latestUserMessage: message.text.body,
-              contactName: name,
-              capabilities,
-              directoryContacts,
-              botDirectoryEnabled: Boolean(orgData.bot_directory_enabled),
-              lead,
-              leadActive,
-            });
+        if (session?.id) {
+          const { error: sessionActivityError } = await supabase
+            .from("chat_sessions")
+            .update({ updated_at: messageTimestampIso })
+            .eq("id", session.id);
+
+          if (sessionActivityError) {
+            console.error("Error updating chat session activity:", sessionActivityError);
           }
+        }
+
+        if (message.type === "text" && message.text?.body && !shouldIgnoreAi) {
+          const capabilities = await loadBotCapabilities(orgData.id);
+          const directoryContacts = await loadDirectoryContacts(orgData.id);
+          const lead = await loadLatestLeadByWaId(orgData.id, waId);
+          const leadActive = Boolean(lead && ACTIVE_LEAD_STATUSES.has(lead.status));
+          await handleAIResponse({
+            chat: chatRecord,
+            organization: {
+              id: orgData.id,
+              name: orgData.name,
+              bot_name: orgData.bot_name,
+              bot_instructions: orgData.bot_instructions,
+              bot_tone: orgData.bot_tone,
+              bot_language: orgData.bot_language,
+              bot_model: orgData.bot_model,
+              bot_directory_enabled: orgData.bot_directory_enabled,
+            },
+            session,
+            waId,
+            phoneNumberId,
+            latestUserMessage: message.text.body,
+            contactName: name,
+            capabilities,
+            directoryContacts,
+            botDirectoryEnabled: Boolean(orgData.bot_directory_enabled),
+            lead,
+            leadActive,
+          });
+        }
       }
 
       // Handle status updates for outgoing messages
