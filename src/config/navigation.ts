@@ -79,6 +79,7 @@ export const navigationModules: ModuleConfig[] = [
         subNavigation: [
             { title: 'Organization', href: '/settings/organization', icon: Building2 },
             { title: 'Team', href: '/settings/team', icon: Users },
+            { title: 'Directory', href: '/settings/directory', icon: Users },
             { title: 'Roles & Permissions', href: '/settings/roles', icon: Shield },
         ]
     }

@@ -13,6 +13,7 @@ export type Organization = {
   bot_tone?: string | null;
   bot_language?: string | null;
   bot_model?: string | null;
+  bot_directory_enabled?: boolean;
 };
 
 export type OrganizationTableRow = Pick<

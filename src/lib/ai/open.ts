@@ -19,6 +19,17 @@ type CreateResponseOptions = {
   tools?: ResponseTool[];
 };
 
+type ToolOutput = {
+  tool_call_id: string;
+  output: string;
+};
+
+type SubmitToolOutputsOptions = {
+  conversationId: string;
+  toolOutputs: ToolOutput[];
+  model?: string;
+};
+
 type ConversationMetadata = Record<string, string>;
 
 const apiKey = process.env.OPENAI_API_KEY;
@@ -59,6 +70,22 @@ const createResponse = async ({
   });
 };
 
+const submitToolOutputs = async ({
+  conversationId,
+  toolOutputs,
+  model,
+}: SubmitToolOutputsOptions) => {
+  return client.responses.create({
+    model: model ?? DEFAULT_MODEL,
+    conversation: conversationId,
+    input: toolOutputs.map((tool) => ({
+      type: "tool_output",
+      tool_call_id: tool.tool_call_id,
+      output: tool.output,
+    })),
+  });
+};
+
 const createConversation = async (metadata?: ConversationMetadata) => {
   return client.conversations.create({
     metadata: metadata ?? {
@@ -91,6 +118,7 @@ const listConversationItems = async (
 
 export const openAIService = {
   createResponse,
+  submitToolOutputs,
   createConversation,
   getConversation,
   deleteConversation,
@@ -101,6 +129,8 @@ export const openAIService = {
 export type {
   ConversationMetadata,
   CreateResponseOptions,
+  SubmitToolOutputsOptions,
+  ToolOutput,
   ReasoningEffort,
   ResponseTool,
 };

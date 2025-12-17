@@ -34,6 +34,67 @@ type ChatSessionRecord = {
   ai_enabled?: boolean | null;
 };
 
+type CapabilityContact = {
+  id: string;
+  capability_id: string;
+  organization_id: string;
+  name: string;
+  role?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+  priority?: number | null;
+  is_active?: boolean | null;
+};
+
+type CapabilityFinance = {
+  id: string;
+  capability_id: string;
+  organization_id: string;
+  item: string;
+  value: string;
+  notes?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  priority?: number | null;
+  is_active?: boolean | null;
+};
+
+type BotCapability = {
+  id: string;
+  organization_id: string;
+  slug: string;
+  title: string;
+  description?: string | null;
+  instructions?: string | null;
+  response_template?: string | null;
+  type?: string | null;
+  enabled?: boolean | null;
+  priority?: number | null;
+  metadata?: Record<string, any> | null;
+  contacts?: CapabilityContact[];
+  finance?: CapabilityFinance[];
+};
+
+type DirectoryContact = {
+  id: string;
+  organization_id: string;
+  role_slug: string;
+  display_role: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  extension?: string | null;
+  mobile?: string | null;
+  notes?: string | null;
+  allow_bot_share?: boolean | null;
+  share_email?: boolean | null;
+  share_phone?: boolean | null;
+  share_extension?: boolean | null;
+  share_mobile?: boolean | null;
+  is_active?: boolean | null;
+};
+
 type CreateLeadArgs = {
   contact_phone: string;
   contact_email?: string | null;
@@ -246,6 +307,90 @@ const parseFunctionArgs = (args: string | Record<string, unknown> | undefined) =
   }
   return args;
 };
+
+const loadBotCapabilities = async (organizationId: string): Promise<BotCapability[]> => {
+  const [capabilitiesRes, financeRes] = await Promise.all([
+    supabase
+      .from("bot_capabilities")
+      .select("id, organization_id, slug, title, description, instructions, response_template, type, enabled, priority, metadata")
+      .eq("organization_id", organizationId)
+      .eq("enabled", true)
+      .order("priority", { ascending: false }),
+    supabase
+      .from("bot_capability_finance")
+      .select("id, capability_id, organization_id, item, value, notes, valid_from, valid_to, priority, is_active")
+      .eq("organization_id", organizationId)
+      .eq("is_active", true)
+      .order("priority", { ascending: false }),
+  ]);
+
+  const capabilityMap = new Map<string, BotCapability>();
+  (capabilitiesRes.data || []).forEach((cap) => {
+    capabilityMap.set(cap.id, { ...cap, contacts: [], finance: [] });
+  });
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  (financeRes.data || []).forEach((item) => {
+    const cap = capabilityMap.get(item.capability_id);
+    const withinDates =
+      (!item.valid_from || item.valid_from <= today) &&
+      (!item.valid_to || item.valid_to >= today);
+    if (cap && withinDates) {
+      cap.finance = cap.finance || [];
+      cap.finance.push(item);
+    }
+  });
+
+  return Array.from(capabilityMap.values());
+};
+
+const loadDirectoryContacts = async (organizationId: string): Promise<DirectoryContact[]> => {
+  const { data } = await supabase
+    .from("directory_contacts")
+    .select(
+      "id, organization_id, role_slug, display_role, name, phone, email, extension, mobile, notes, allow_bot_share, share_email, share_phone, share_extension, share_mobile, is_active"
+    )
+    .eq("organization_id", organizationId)
+    .eq("is_active", true)
+    .order("display_role", { ascending: true });
+
+  return (data || []) as DirectoryContact[];
+};
+
+const submitToolOutputs = async ({
+  conversationId,
+  toolCalls,
+  output,
+  model,
+}: {
+  conversationId: string;
+  toolCalls: Array<{ call_id?: string; id?: string; name?: string }>;
+  output: string;
+  model?: string | null;
+}) => {
+  const toolOutputs = toolCalls
+    .map((call) => call.call_id || call.id)
+    .filter(Boolean)
+    .map((toolCallId) => ({
+      tool_call_id: toolCallId as string,
+      output,
+    }));
+
+  if (!toolOutputs.length) {
+    return;
+  }
+
+  try {
+    await openAIService.submitToolOutputs({
+      conversationId,
+      toolOutputs,
+      model: model || undefined,
+    });
+  } catch (error) {
+    console.error("Error submitting tool outputs", error);
+  }
+};
 const resolveChatSession = async ({
   chat,
   organizationName,
@@ -377,6 +522,9 @@ const handleAIResponse = async ({
   phoneNumberId,
   latestUserMessage,
   contactName,
+  capabilities,
+  directoryContacts,
+  botDirectoryEnabled,
 }: {
   chat: ChatRecord;
   organization: {
@@ -387,12 +535,16 @@ const handleAIResponse = async ({
     bot_tone?: string | null;
     bot_language?: string | null;
     bot_model?: string | null;
+    bot_directory_enabled?: boolean | null;
   };
   session: ChatSessionRecord | null;
   waId: string;
   phoneNumberId: string;
   latestUserMessage: string;
   contactName?: string | null;
+  capabilities: BotCapability[];
+  directoryContacts: DirectoryContact[];
+  botDirectoryEnabled: boolean;
 }) => {
   const handleHandoff = async (aiResponseId?: string) => {
     const nowIso = new Date().toISOString();
@@ -484,25 +636,448 @@ const handleAIResponse = async ({
   }
 
   try {
-    const chatbotReply = await generateChatbotReply({
-      input: latestUserMessage,
-      conversationId: session.conversation_id,
-      context: {
-        organizationId: organization.id,
-        organizationName: organization.name,
-        botName: organization.bot_name,
-        botInstructions: organization.bot_instructions,
-        botTone: organization.bot_tone,
-        botLanguage: organization.bot_language,
-        botModel: organization.bot_model,
-        waId,
-        chatId: chat.id,
-        phoneNumber: chat.phone_number,
-      },
-    });
+    const capabilityContext = capabilities.map((cap) => ({
+      slug: cap.slug,
+      title: cap.title,
+      description: cap.description,
+      instructions: cap.instructions,
+      response_template: cap.response_template,
+      type: cap.type,
+      metadata: cap.metadata,
+      contacts: cap.contacts,
+      finance: cap.finance,
+    }));
+
+    const normalizedMessage = latestUserMessage.toLowerCase();
+    const contactIntent = /(contacto|tel|teléfono|telefono|correo|email|mail|ext|extensión|extension|móvil|movil|cel|celular|número|numero|pásalo|pasalo|pasame|pásame|pásamelo|pasamelo)/i.test(
+      latestUserMessage
+    );
+    const shouldHandleDirectory = botDirectoryEnabled && contactIntent;
+
+    if (shouldHandleDirectory) {
+      const allowedContacts = directoryContacts.filter((contact) => contact.allow_bot_share);
+      if (allowedContacts.length > 0) {
+        const prefersCaja = normalizedMessage.includes("caja");
+        const match =
+          (prefersCaja
+            ? allowedContacts.find((contact) =>
+                `${contact.display_role} ${contact.role_slug}`.toLowerCase().includes("caja")
+              )
+            : undefined) || allowedContacts[0];
+
+        const fields: string[] = [];
+        if (match.share_email && match.email) fields.push(`correo: ${match.email}`);
+        if (match.share_phone && match.phone) fields.push(`teléfono: ${match.phone}`);
+        if (match.share_extension && match.extension)
+          fields.push(`extensión: ${match.extension}`);
+        if (match.share_mobile && match.mobile) fields.push(`móvil: ${match.mobile}`);
+
+        const isCorrection = /(no es|incorrecto|equivocado|ese no)/i.test(latestUserMessage);
+        const responseText =
+          fields.length > 0
+            ? `${isCorrection ? "Gracias por avisar." : "Claro,"} ${
+                match.display_role ? `contacto de ${match.display_role}` : "el contacto"
+              } es ${match.name}. ${fields.join(", ")}.`
+            : `Tengo el contacto de ${match.display_role}, pero no tengo datos autorizados para compartir. ¿Quieres que te canalice con un asesor?`;
+
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: responseText,
+        });
+
+        if (!error) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session?.id ?? null,
+            response_id: null,
+            wa_message_id: messageId,
+            body: responseText,
+            type: "text",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: "Bot",
+            payload: {
+              tool: "directory_shortcut",
+              conversation_id: session?.conversation_id,
+              directory_contact_id: match.id,
+              query: latestUserMessage,
+            },
+            created_at: nowIso,
+          });
+        }
+        return;
+      }
+    }
+
+    const createReply = async (conversationId: string) =>
+      generateChatbotReply({
+        input: latestUserMessage,
+        conversationId,
+        context: {
+          organizationId: organization.id,
+          organizationName: organization.name,
+          botName: organization.bot_name,
+          botInstructions: organization.bot_instructions,
+          botTone: organization.bot_tone,
+          botLanguage: organization.bot_language,
+          botModel: organization.bot_model,
+          waId,
+          chatId: chat.id,
+          phoneNumber: chat.phone_number,
+          capabilities: capabilityContext,
+          botDirectoryEnabled,
+          directoryContacts: directoryContacts.map((contact) => ({
+            role_slug: contact.role_slug,
+            display_role: contact.display_role,
+            name: contact.name,
+            email: contact.email,
+            phone: contact.phone,
+            extension: contact.extension,
+            mobile: contact.mobile,
+            allow_bot_share: contact.allow_bot_share,
+            share_email: contact.share_email,
+            share_phone: contact.share_phone,
+            share_extension: contact.share_extension,
+            share_mobile: contact.share_mobile,
+          })),
+        },
+      });
+
+    let chatbotReply;
+    try {
+      chatbotReply = await createReply(session.conversation_id);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "";
+      if (errorMessage.includes("No tool output found") && session?.id) {
+        const freshConversation = await openAIService.createConversation({
+          organizationName: organization.name || "CAT - Nexus",
+        });
+        if (freshConversation?.id) {
+          await supabase
+            .from("chat_sessions")
+            .update({
+              conversation_id: freshConversation.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", session.id);
+          chatbotReply = await createReply(freshConversation.id);
+        } else {
+          throw err;
+        }
+      } else {
+        throw err;
+      }
+    }
 
     if (chatbotReply.handoffRequested) {
+      if (session?.conversation_id) {
+        await submitToolOutputs({
+          conversationId: session.conversation_id,
+          toolCalls: chatbotReply.functionCalls.filter((call) => call.name === "request_handoff"),
+          output: JSON.stringify({ status: "handoff_requested" }),
+          model: organization.bot_model,
+        });
+      }
       await handleHandoff((chatbotReply.aiResponse as { id?: string })?.id);
+      return;
+    }
+
+    const directoryCall = chatbotReply.functionCalls.find(
+      (call) => call.name === "get_directory_contact"
+    );
+    if (directoryCall) {
+      const args = parseFunctionArgs(directoryCall.arguments) as { query?: string };
+      const normalizedQuery = (args.query || "").trim().toLowerCase();
+      const hasContactIntent = /(contacto|tel|teléfono|telefono|correo|email|mail|ext|extensión|extension|móvil|movil|cel|celular|número|numero)/i.test(
+        args.query || ""
+      );
+      const allowedContacts = directoryContacts.filter((contact) => contact.allow_bot_share);
+      const match =
+        allowedContacts.find((contact) =>
+          normalizedQuery
+            ? `${contact.display_role} ${contact.role_slug} ${contact.name}`
+                .toLowerCase()
+                .includes(normalizedQuery)
+            : false
+        ) || allowedContacts[0];
+
+      const fallback =
+        "Por ahora no tengo permiso para compartir ese contacto. Si quieres, te canalizo con un asesor.";
+
+      if (!botDirectoryEnabled || !match) {
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: fallback,
+        });
+        if (!error) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session?.id ?? null,
+            response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+            wa_message_id: messageId,
+            body: fallback,
+            type: "text",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: "Bot",
+            payload: {
+              tool: "get_directory_contact",
+              conversation_id: session?.conversation_id,
+              query: args.query,
+            },
+            created_at: nowIso,
+          });
+        }
+        if (session?.conversation_id) {
+          await submitToolOutputs({
+            conversationId: session.conversation_id,
+            toolCalls: chatbotReply.functionCalls.filter(
+              (call) => call.name === "get_directory_contact"
+            ),
+            output: JSON.stringify({ status: "not_shared" }),
+            model: organization.bot_model,
+          });
+        }
+        return;
+      }
+
+      if (!hasContactIntent) {
+        const reply = "¿Buscas el contacto de caja o el horario? Dime cuál y te ayudo.";
+        const { messageId, error } = await sendWhatsAppText({
+          phoneNumberId,
+          accessToken,
+          to: waId,
+          body: reply,
+        });
+        if (!error) {
+          const nowIso = new Date().toISOString();
+          await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session?.id ?? null,
+            response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+            wa_message_id: messageId,
+            body: reply,
+            type: "text",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: "Bot",
+            payload: {
+              tool: "get_directory_contact",
+              conversation_id: session?.conversation_id,
+              query: args.query,
+              note: "no_contact_intent",
+            },
+            created_at: nowIso,
+          });
+        }
+        return;
+      }
+
+      const fields: string[] = [];
+      if (match.share_email && match.email) fields.push(`correo: ${match.email}`);
+      if (match.share_phone && match.phone) fields.push(`teléfono: ${match.phone}`);
+      if (match.share_extension && match.extension)
+        fields.push(`extensión: ${match.extension}`);
+      if (match.share_mobile && match.mobile) fields.push(`móvil: ${match.mobile}`);
+
+      const responseText =
+        fields.length > 0
+          ? `Claro, te comparto el contacto de ${match.display_role}: ${match.name}. ${fields.join(", ")}.`
+          : `Tengo el contacto de ${match.display_role}, pero no tengo datos autorizados para compartir. ¿Quieres que te canalice con un asesor?`;
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: responseText,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+          wa_message_id: messageId,
+          body: responseText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "get_directory_contact",
+            conversation_id: session?.conversation_id,
+            directory_contact_id: match.id,
+            query: args.query,
+          },
+          created_at: nowIso,
+        });
+      }
+      if (session?.conversation_id) {
+        await submitToolOutputs({
+          conversationId: session.conversation_id,
+          toolCalls: chatbotReply.functionCalls.filter(
+            (call) => call.name === "get_directory_contact"
+          ),
+          output: JSON.stringify({
+            status: "shared",
+            contact_id: match.id,
+            shared_fields: fields,
+          }),
+          model: organization.bot_model,
+        });
+      }
+      return;
+    }
+
+    const financeCall = chatbotReply.functionCalls.find((call) => call.name === "get_finance_info");
+    if (financeCall) {
+      const args = parseFunctionArgs(financeCall.arguments) as {
+        capability_slug?: string;
+        item?: string;
+      };
+      const capability =
+        capabilities.find((cap) => cap.slug === (args.capability_slug || "").trim()) ||
+        capabilities.find((cap) => cap.type === "finance");
+      const financeItems = capability?.finance || [];
+      const normalizedItem = args.item?.trim().toLowerCase();
+      const match =
+        financeItems.find((f) =>
+          normalizedItem ? f.item.toLowerCase().includes(normalizedItem) : false
+        ) || financeItems[0];
+
+      const text = match
+        ? capability?.response_template
+            ?.replace(/\{\{\s*item\s*\}\}/g, match.item)
+            ?.replace(/\{\{\s*value\s*\}\}/g, match.value)
+            ?.replace(/\{\{\s*notes\s*\}\}/g, match.notes || "")
+          || `${match.item}: ${match.value}${match.notes ? ` (${match.notes})` : ""}.`
+        : "Por ahora no tengo ese dato configurado, pero puedo pasarte con caja si lo necesitas.";
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: text,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+          wa_message_id: messageId,
+          body: text,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "get_finance_info",
+            conversation_id: session?.conversation_id,
+            capability: capability?.slug,
+            finance_id: match?.id,
+            item_requested: args.item,
+          },
+          created_at: nowIso,
+        });
+      }
+      if (session?.conversation_id) {
+        await submitToolOutputs({
+          conversationId: session.conversation_id,
+          toolCalls: chatbotReply.functionCalls.filter(
+            (call) => call.name === "get_finance_info"
+          ),
+          output: JSON.stringify({
+            status: match ? "shared" : "not_found",
+            finance_id: match?.id,
+          }),
+          model: organization.bot_model,
+        });
+      }
+      return;
+    }
+
+    const complaintCall = chatbotReply.functionCalls.find((call) => call.name === "create_complaint");
+    if (complaintCall) {
+      const args = parseFunctionArgs(complaintCall.arguments) as {
+        capability_slug?: string;
+        summary?: string;
+        channel?: string;
+        customer_name?: string;
+        customer_contact?: string;
+      };
+      const capability =
+        capabilities.find((cap) => cap.slug === (args.capability_slug || "").trim()) ||
+        capabilities.find((cap) => cap.type === "complaint" || cap.metadata?.allow_complaints === true);
+
+      const { data, error: complaintError } = await supabase
+        .from("bot_complaints")
+        .insert({
+          organization_id: organization.id,
+          capability_id: capability?.id ?? null,
+          channel: args.channel?.trim() || "whatsapp",
+          customer_name: args.customer_name?.trim() || contactName || null,
+          customer_contact: args.customer_contact?.trim() || waId,
+          summary: args.summary?.trim() || latestUserMessage,
+          status: "open",
+        })
+        .select("id")
+        .single();
+
+      const replyText = complaintError
+        ? "No pude registrar la queja en este momento. ¿Puedes intentar más tarde?"
+        : `Tu queja ha sido registrada${data?.id ? ` (folio: ${data.id})` : ""}. Gracias por contarnos, daremos seguimiento.`;
+
+      const { messageId, error } = await sendWhatsAppText({
+        phoneNumberId,
+        accessToken,
+        to: waId,
+        body: replyText,
+      });
+
+      if (!error) {
+        const nowIso = new Date().toISOString();
+        await supabase.from("messages").insert({
+          chat_id: chat.id,
+          chat_session_id: session?.id ?? null,
+          response_id: (chatbotReply.aiResponse as { id?: string })?.id ?? null,
+          wa_message_id: messageId,
+          body: replyText,
+          type: "text",
+          status: "sent",
+          sent_at: nowIso,
+          sender_name: "Bot",
+          payload: {
+            tool: "create_complaint",
+            conversation_id: session?.conversation_id,
+            capability: capability?.slug,
+            complaint_id: data?.id,
+          },
+          created_at: nowIso,
+        });
+      }
+      if (session?.conversation_id) {
+        await submitToolOutputs({
+          conversationId: session.conversation_id,
+          toolCalls: chatbotReply.functionCalls.filter(
+            (call) => call.name === "create_complaint"
+          ),
+          output: JSON.stringify({
+            status: complaintError ? "failed" : "created",
+            complaint_id: data?.id,
+          }),
+          model: organization.bot_model,
+        });
+      }
+
       return;
     }
 
@@ -514,6 +1089,14 @@ const handleAIResponse = async ({
 
       if (!contactPhone || !parsedArgs.student_first_name || !parsedArgs.student_last_name_paternal || !parsedArgs.grade_interest) {
         console.warn("Lead tool invoked without required fields");
+        if (session?.conversation_id) {
+          await submitToolOutputs({
+            conversationId: session.conversation_id,
+            toolCalls: chatbotReply.functionCalls.filter((call) => call.name === "create_lead"),
+            output: JSON.stringify({ status: "invalid_fields" }),
+            model: organization.bot_model,
+          });
+        }
         return;
       }
 
@@ -590,9 +1173,25 @@ const handleAIResponse = async ({
           console.error("Error saving lead confirmation reply:", insertError);
         }
 
+        if (session?.conversation_id) {
+          await submitToolOutputs({
+            conversationId: session.conversation_id,
+            toolCalls: chatbotReply.functionCalls.filter((call) => call.name === "create_lead"),
+            output: JSON.stringify({ status: "created", lead_id: leadId }),
+            model: organization.bot_model,
+          });
+        }
         return;
       } catch (leadErr) {
         console.error("Error handling lead creation", leadErr);
+        if (session?.conversation_id) {
+          await submitToolOutputs({
+            conversationId: session.conversation_id,
+            toolCalls: chatbotReply.functionCalls.filter((call) => call.name === "create_lead"),
+            output: JSON.stringify({ status: "failed" }),
+            model: organization.bot_model,
+          });
+        }
         return;
       }
     }
@@ -758,7 +1357,7 @@ export async function POST(request: Request) {
         // 1. Find Organization
           const { data: orgData, error: orgError } = await supabase
             .from("organizations")
-            .select("id, name, bot_name, bot_instructions, bot_tone, bot_language, bot_model")
+            .select("id, name, bot_name, bot_instructions, bot_tone, bot_language, bot_model, bot_directory_enabled")
             .eq("phone_number_id", phoneNumberId)
             .single();
 
@@ -911,6 +1510,8 @@ export async function POST(request: Request) {
         }
 
           if (message.type === "text" && message.text?.body) {
+            const capabilities = await loadBotCapabilities(orgData.id);
+            const directoryContacts = await loadDirectoryContacts(orgData.id);
             await handleAIResponse({
               chat: chatRecord,
               organization: {
@@ -921,12 +1522,16 @@ export async function POST(request: Request) {
                 bot_tone: orgData.bot_tone,
                 bot_language: orgData.bot_language,
                 bot_model: orgData.bot_model,
+                bot_directory_enabled: orgData.bot_directory_enabled,
               },
               session,
               waId,
               phoneNumberId,
               latestUserMessage: message.text.body,
               contactName: name,
+              capabilities,
+              directoryContacts,
+              botDirectoryEnabled: Boolean(orgData.bot_directory_enabled),
             });
           }
       }

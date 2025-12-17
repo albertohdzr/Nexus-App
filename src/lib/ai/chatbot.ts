@@ -19,6 +19,51 @@ type CreateLeadArgs = {
   source?: string | null;
 };
 
+type CapabilityContact = {
+  name: string
+  role?: string | null
+  email?: string | null
+  phone?: string | null
+  notes?: string | null
+  priority?: number | null
+}
+
+type CapabilityFinance = {
+  item: string
+  value: string
+  notes?: string | null
+  valid_from?: string | null
+  valid_to?: string | null
+  priority?: number | null
+}
+
+type CapabilityContext = {
+  slug: string
+  title: string
+  description?: string | null
+  instructions?: string | null
+  response_template?: string | null
+  type?: string | null
+  metadata?: Record<string, any> | null
+  contacts?: CapabilityContact[]
+  finance?: CapabilityFinance[]
+}
+
+type DirectoryContactContext = {
+  role_slug: string
+  display_role: string
+  name: string
+  email?: string | null
+  phone?: string | null
+  extension?: string | null
+  mobile?: string | null
+  allow_bot_share?: boolean | null
+  share_email?: boolean | null
+  share_phone?: boolean | null
+  share_extension?: boolean | null
+  share_mobile?: boolean | null
+}
+
 type BotContext = {
   organizationId: string;
   organizationName?: string | null;
@@ -30,6 +75,9 @@ type BotContext = {
   waId?: string | null;
   chatId?: string | null;
   phoneNumber?: string | null;
+  capabilities?: CapabilityContext[];
+  botDirectoryEnabled?: boolean | null;
+  directoryContacts?: DirectoryContactContext[];
 };
 
 const HANDOFF_TOOL: ResponseTool[] = [
@@ -136,6 +184,78 @@ const CREATE_LEAD_TOOL: ResponseTool = {
   strict: true,
 };
 
+const GET_DIRECTORY_CONTACT_TOOL: ResponseTool = {
+  type: "function",
+  name: "get_directory_contact",
+  description:
+    "Obtén el contacto adecuado del directorio interno. Úsalo si piden hablar con alguien específico (ej. caja, admisiones, soporte).",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "Rol, puesto o nombre solicitado (ej. caja, coordinación, dirección).",
+      },
+    },
+    required: ["query"],
+    additionalProperties: false,
+  },
+};
+
+const GET_FINANCE_TOOL: ResponseTool = {
+  type: "function",
+  name: "get_finance_info",
+  description:
+    "Devuelve información financiera predefinida (fechas de pago, conceptos, montos, contacto de caja). Úsalo para resolver preguntas de pagos.",
+  parameters: {
+    type: "object",
+    properties: {
+      capability_slug: {
+        type: "string",
+        description: "Slug de la capacidad financiera (ej. pagos, colegiaturas).",
+      },
+      item: {
+        type: "string",
+        description: "Etiqueta o concepto solicitado (ej. fecha_limite_inscripcion, caja_contacto).",
+      },
+    },
+    required: ["capability_slug", "item"],
+    additionalProperties: false,
+  },
+};
+
+const CREATE_COMPLAINT_TOOL: ResponseTool = {
+  type: "function",
+  name: "create_complaint",
+  description:
+    "Registra una queja o comentario del usuario. Úsalo cuando el usuario quiera levantar una queja o reporte.",
+  parameters: {
+    type: "object",
+    properties: {
+      capability_slug: {
+        type: "string",
+        description: "Slug de la capacidad configurada para quejas.",
+      },
+      summary: {
+        type: "string",
+        description: "Descripción breve de la queja.",
+      },
+      channel: {
+        type: "string",
+        description: "Canal de origen (ej. whatsapp).",
+      },
+      customer_name: {
+        type: "string",
+      },
+      customer_contact: {
+        type: "string",
+      },
+    },
+    required: ["capability_slug", "summary", "channel", "customer_name", "customer_contact"],
+    additionalProperties: false,
+  },
+};
+
 const BASE_INSTRUCTIONS = `
 Eres un asistente de admisiones. Si el usuario pide hablar con un humano, usa la función request_handoff.
 Si el usuario pide informes o quiere aplicar, recolecta datos para crear un lead usando create_lead:
@@ -146,6 +266,14 @@ Si el usuario pide informes o quiere aplicar, recolecta datos para crear un lead
 - Resume la conversación en 'summary'.
 Solo llama create_lead cuando tengas los campos requeridos y sean claros. Mientras falten datos, haz preguntas cortas para obtenerlos.
 Responde en el idioma preferido si se indica, y mantén el tono configurado.
+
+Estilo de conversación:
+- No repitas el saludo si ya saludaste en la sesión; solo al inicio o si el usuario saluda.
+- Evita repetir "soy asistente virtual" en cada respuesta.
+- Responde en 1-2 frases claras y termina con una pregunta breve o siguiente paso.
+- Si el usuario ya pidió un contacto, compártelo directo sin pedir permiso otra vez.
+- Si no tienes un dato (ej. saldo), dilo de forma amable y ofrece el siguiente paso.
+- No ofrezcas contacto si la pregunta ya quedó resuelta y no lo pidió explícitamente.
 `;
 
 const extractResponseText = (response: unknown) => {
@@ -251,15 +379,66 @@ const generateChatbotReply = async ({
 }: GenerateChatbotReplyArgs): Promise<ChatbotReply> => {
   const tools: ResponseTool[] = [...HANDOFF_TOOL, CREATE_LEAD_TOOL];
 
+  const hasDirectoryContacts = Boolean(
+    context.botDirectoryEnabled &&
+      (context.directoryContacts || []).some((contact) => contact.allow_bot_share)
+  );
+  const hasFinance = context.capabilities?.some((cap) => (cap.finance?.length || 0) > 0);
+  const hasComplaints = context.capabilities?.some(
+    (cap) =>
+      cap.type === "complaint" ||
+      ((cap.metadata as { allow_complaints?: boolean } | null)?.allow_complaints === true)
+  );
+
+  if (hasDirectoryContacts) {
+    tools.push(GET_DIRECTORY_CONTACT_TOOL);
+  }
+  if (hasFinance) {
+    tools.push(GET_FINANCE_TOOL);
+  }
+  if (hasComplaints) {
+    tools.push(CREATE_COMPLAINT_TOOL);
+  }
+
+  const capabilityBlocks =
+    context.capabilities?.map((cap) => {
+      const finance =
+        cap.finance && cap.finance.length
+          ? `Datos: ${cap.finance.map((f) => `${f.item}: ${f.value}`).join("; ")}`
+          : null;
+
+      return `- ${cap.title} (slug: ${cap.slug})${cap.description ? `: ${cap.description}` : ""}${
+        cap.instructions ? `\n  Indicaciones: ${cap.instructions}` : ""
+      }${finance ? `\n  ${finance}` : ""}${
+        cap.response_template ? `\n  Plantilla: ${cap.response_template}` : ""
+      }`;
+    })?.join("\n") || "Ninguna capacidad definida.";
+
+  const directorySummary = hasDirectoryContacts
+    ? `Directorio habilitado. Roles disponibles: ${(context.directoryContacts || [])
+        .filter((contact) => contact.allow_bot_share)
+        .map((contact) => contact.display_role || contact.role_slug)
+        .join(", ")}.`
+    : "Directorio no disponible para el bot.";
+
   const dynamicContext = `
 Organización: ${context.organizationName || "N/A"} (${context.organizationId})
 Bot: ${context.botName || "Asistente"}${context.botTone ? `, tono: ${context.botTone}` : ""}${context.botLanguage ? `, idioma preferido: ${context.botLanguage}` : ""}.
 Whatsapp wa_id: ${context.waId || "N/A"}; chat_id: ${context.chatId || "N/A"}; teléfono contacto sugerido: ${context.phoneNumber || "N/A"}.
 Si llamas create_lead, usa source='whatsapp' por defecto y rellena los campos que ya conoces.`;
 
+  const resolvedBotInstructions = (context.botInstructions || "")
+    .replace(/{{\s*Nombre del Bot\s*}}/gi, context.botName || "Asistente")
+    .replace(/{{\s*Nombre del Colegio\s*}}/gi, context.organizationName || "la institución");
+
   const instructions = `
 ${BASE_INSTRUCTIONS}
-${context.botInstructions || ""}
+${resolvedBotInstructions}
+
+Capacidades disponibles (elige la que corresponda por slug):
+${capabilityBlocks}
+
+${directorySummary}
 
 ${dynamicContext}
   `;
