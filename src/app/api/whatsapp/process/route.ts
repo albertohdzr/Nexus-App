@@ -472,6 +472,83 @@ export async function POST(request: Request) {
         continue;
       }
 
+      if (call.name === "list_available_appointments") {
+        const startDateStr = String(args.start_date || "").trim();
+        const endDateStr = String(args.end_date || "").trim();
+
+        const startDate = new Date(`${startDateStr}T00:00:00`);
+        const endDate = new Date(`${endDateStr}T00:00:00`);
+
+        if (
+          !startDateStr ||
+          !endDateStr ||
+          Number.isNaN(startDate.getTime()) ||
+          Number.isNaN(endDate.getTime()) ||
+          endDate < startDate
+        ) {
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({
+              status: "failed",
+              error: "invalid_date_range",
+            }),
+          });
+          continue;
+        }
+
+        const endExclusive = new Date(endDate);
+        endExclusive.setDate(endExclusive.getDate() + 1);
+
+        const { data: slots, error: slotsError } = await supabase
+          .from("availability_slots")
+          .select(
+            "id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked",
+          )
+          .eq("organization_id", organization.id)
+          .eq("is_active", true)
+          .eq("is_blocked", false)
+          .gte("starts_at", startDate.toISOString())
+          .lt("starts_at", endExclusive.toISOString())
+          .order("starts_at", { ascending: true });
+
+        if (slotsError) {
+          console.error("Error listing availability slots", slotsError);
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "failed" }),
+          });
+          continue;
+        }
+
+        const availableSlots = (slots || [])
+          .filter(
+            (slot) =>
+              typeof slot.appointments_count === "number" &&
+              typeof slot.max_appointments === "number" &&
+              slot.appointments_count < slot.max_appointments,
+          )
+          .map((slot) => ({
+            id: slot.id,
+            starts_at: slot.starts_at,
+            ends_at: slot.ends_at,
+            campus: slot.campus,
+            remaining_capacity:
+              typeof slot.max_appointments === "number" &&
+              typeof slot.appointments_count === "number"
+                ? slot.max_appointments - slot.appointments_count
+                : null,
+          }));
+
+        toolOutputs.push({
+          tool_call_id: callId,
+          output: JSON.stringify({
+            status: availableSlots.length ? "ok" : "empty",
+            slots: availableSlots,
+          }),
+        });
+        continue;
+      }
+
       if (call.name === "schedule_visit") {
         const preferredDate = String(args.preferred_date || "").trim();
         const preferredTimeRaw = String(args.preferred_time || "").trim();
@@ -516,7 +593,38 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const endsAt = new Date(startDate.getTime() + 60 * 60 * 1000);
+        const { data: slot, error: slotError } = await supabase
+          .from("availability_slots")
+          .select(
+            "id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked",
+          )
+          .eq("organization_id", organization.id)
+          .eq("is_active", true)
+          .eq("is_blocked", false)
+          .eq("starts_at", startDate.toISOString())
+          .maybeSingle();
+
+        if (slotError) {
+          console.error("Error fetching availability slot", slotError);
+        }
+
+        const slotUnavailable =
+          !slot ||
+          typeof slot.appointments_count !== "number" ||
+          typeof slot.max_appointments !== "number" ||
+          slot.appointments_count >= slot.max_appointments;
+
+        if (slotUnavailable) {
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({
+              status: "unavailable",
+              error: "slot_unavailable",
+            }),
+          });
+          continue;
+        }
+
         const appointmentNotes = [notes, timeNote].filter(Boolean).join(" | ");
 
         const { data: appointment, error: appointmentError } = await supabase
@@ -524,8 +632,10 @@ export async function POST(request: Request) {
           .insert({
             organization_id: organization.id,
             lead_id: leadResult.leadId,
-            starts_at: startDate.toISOString(),
-            ends_at: endsAt.toISOString(),
+            slot_id: slot.id,
+            starts_at: slot.starts_at,
+            ends_at: slot.ends_at,
+            campus: slot.campus || null,
             type: "visit",
             status: "scheduled",
             notes: appointmentNotes || null,
@@ -544,12 +654,26 @@ export async function POST(request: Request) {
           continue;
         }
 
+        const { error: slotUpdateError } = await supabase
+          .from("availability_slots")
+          .update({
+            appointments_count: slot.appointments_count + 1,
+            updated_at: nowIso,
+          })
+          .eq("id", slot.id)
+          .eq("organization_id", organization.id);
+
+        if (slotUpdateError) {
+          console.error("Error updating slot capacity", slotUpdateError);
+        }
+
         toolOutputs.push({
           tool_call_id: callId,
           output: JSON.stringify({
             status: "scheduled",
             appointment_id: appointment?.id ?? null,
             starts_at: appointment?.starts_at ?? null,
+            slot_id: slot.id,
           }),
         });
         continue;

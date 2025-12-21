@@ -269,6 +269,29 @@ const SCHEDULE_VISIT_TOOL: ResponseTool = {
   },
 };
 
+const LIST_AVAILABLE_APPOINTMENTS_TOOL: ResponseTool = {
+  type: "function",
+  name: "list_available_appointments",
+  description:
+    "Lista los slots disponibles para visitas dentro de un rango de fechas.",
+  parameters: {
+    type: "object",
+    properties: {
+      start_date: {
+        type: "string",
+        description: "Fecha inicial del rango (YYYY-MM-DD).",
+      },
+      end_date: {
+        type: "string",
+        description: "Fecha final del rango (YYYY-MM-DD).",
+      },
+    },
+    required: ["start_date", "end_date"],
+    additionalProperties: false,
+  },
+  strict: true,
+};
+
 const extractResponseText = (response: unknown) => {
   const responseAny = response as
     | { output_text?: string | null; output?: unknown[] }
@@ -390,6 +413,7 @@ const generateChatbotReply = async ({
   }
   tools.push(CREATE_COMPLAINT_TOOL);
   if (context.appointmentsEnabled) {
+    tools.push(LIST_AVAILABLE_APPOINTMENTS_TOOL);
     tools.push(SCHEDULE_VISIT_TOOL);
   }
 
