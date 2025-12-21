@@ -6,6 +6,7 @@ const WAIT_TIME_MS = 5000;
 // Usa SERVICE_ROLE_KEY para tener permisos de borrado/update
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const appBaseUrl = "http://host.docker.internal:3000";
 
 Deno.serve(async (req) => {
   const { chat_id } = await req.json();
@@ -65,7 +66,25 @@ Deno.serve(async (req) => {
   console.log(`🚀 ENVIANDO A API FINAL: "${finalMessage}"`);
   console.log("-----------------------------------------");
 
-  // TODO: Aquí haces tu fetch("https://tu-api.com", { body: finalMessage })
+  if (!appBaseUrl) {
+    console.error("Missing NEXT_PUBLIC_APP_URL/APP_BASE_URL for API call.");
+    return new Response("Missing app base url", { status: 500 });
+  }
+
+  const response = await fetch(`${appBaseUrl}/api/whatsapp/process`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id,
+      final_message: finalMessage,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    console.error("API process error:", response.status, errorText);
+    return new Response("API process error", { status: 502 });
+  }
 
   // 6. LIMPIEZA TOTAL (Esto garantiza que el 4to mensaje sea "nuevo")
   await supabase.from("message_queue").delete().eq("chat_id", chat_id);

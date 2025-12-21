@@ -393,48 +393,6 @@ const generateChatbotReply = async ({
     tools.push(SCHEDULE_VISIT_TOOL);
   }
 
-  const directorySummary = hasDirectoryContacts
-    ? `Directorio habilitado. Roles disponibles: ${
-      (context.directoryContacts || [])
-        .filter((contact) => contact.allow_bot_share)
-        .map((contact) => contact.display_role || contact.role_slug)
-        .join(", ")
-    }.`
-    : "Directorio no disponible.";
-
-  const leadSummary = context.leadActive
-    ? `Registro activo detectado (id: ${context.leadId || "N/A"}, status: ${
-      context.leadStatus || "N/A"
-    }).`
-    : "No hay registro activo detectado.";
-
-  const leadProfile = context.leadProfile
-    ? `Datos del registro: contacto ${
-      context.leadProfile.contact_name || "N/A"
-    } (${context.leadProfile.contact_phone || "N/A"}${
-      context.leadProfile.contact_email
-        ? `, ${context.leadProfile.contact_email}`
-        : ""
-    }), estudiante ${context.leadProfile.student_first_name || "N/A"} ${
-      context.leadProfile.student_last_name_paternal || ""
-    }, grado ${context.leadProfile.grade_interest || "N/A"}, escuela actual ${
-      context.leadProfile.current_school || "N/A"
-    }${
-      context.leadProfile.school_year
-        ? `, ciclo ${context.leadProfile.school_year}`
-        : ""
-    }.`
-    : "";
-
-  const dynamicContext = `
-Organización: ${context.organizationName || "N/A"} (${context.organizationId})
-Bot: ${context.botName || "Asistente"}${
-    context.botTone ? `, tono: ${context.botTone}` : ""
-  }${context.botLanguage ? `, idioma preferido: ${context.botLanguage}` : ""}.
-Whatsapp wa_id: ${context.waId || "N/A"}; chat_id: ${
-    context.chatId || "N/A"
-  }; teléfono contacto sugerido: ${context.phoneNumber || "N/A"}.`;
-
   const resolvedBotInstructions = (context.botInstructions || "")
     .replace(/{{\s*Nombre del Bot\s*}}/gi, context.botName || "Asistente")
     .replace(
@@ -442,39 +400,60 @@ Whatsapp wa_id: ${context.waId || "N/A"}; chat_id: ${
       context.organizationName || "la institución",
     );
 
-  const instructions = `
-${resolvedBotInstructions}
+  const instructions = resolvedBotInstructions;
 
-Contexto operativo:
-
-${directorySummary}
-${leadSummary}
-${leadProfile}
-
-${dynamicContext}
-  `;
-
-  const aiResponse = await openAIService.createResponse({
-    input,
-    conversationId,
-    tools,
-    instructions,
-    model: context.botModel || undefined,
-  });
+  const model = context.botModel || undefined;
+  let aiResponse: unknown;
+  try {
+    aiResponse = await openAIService.createResponse({
+      input,
+      conversationId,
+      tools,
+      instructions,
+      model,
+    });
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    const callIdMatch = errorMessage.match(/function call (call_[A-Za-z0-9]+)/);
+    if (callIdMatch && conversationId) {
+      await openAIService.submitToolOutputs({
+        conversationId,
+        model,
+        toolOutputs: [
+          {
+            tool_call_id: callIdMatch[1],
+            output: JSON.stringify({ status: "auto_acknowledged" }),
+          },
+        ],
+      });
+      aiResponse = await openAIService.createResponse({
+        input,
+        conversationId,
+        tools,
+        instructions,
+        model,
+      });
+    } else {
+      throw error;
+    }
+  }
 
   const functionCalls = extractFunctionCalls(aiResponse);
   const handoffRequested = functionCalls.some((call) =>
     call.name === "request_handoff"
   );
 
+  const responseAny = aiResponse as { output?: unknown[] } | null | undefined;
   const firstOutput =
-    Array.isArray((aiResponse as { output?: unknown[] }).output)
-      ? (aiResponse as { output?: unknown[] }).output?.[0]
+    Array.isArray(responseAny?.output) && responseAny?.output.length
+      ? responseAny?.output[0]
       : undefined;
   const responseMessageId =
-    // @ts-expect-error - defensive read
-    firstOutput?.id && typeof firstOutput.id === "string"
-      ? firstOutput.id
+    firstOutput && typeof firstOutput === "object" && "id" in firstOutput
+      ? typeof (firstOutput as { id?: unknown }).id === "string"
+        ? (firstOutput as { id?: string }).id ?? null
+        : null
       : null;
 
   return {
