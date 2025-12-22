@@ -87,6 +87,10 @@ const CREATE_LEAD_TOOL: ResponseTool = {
         type: "string",
         description: "Teléfono de contacto con lada (ej. 5218711234567).",
       },
+      contact_email: {
+        type: "string",
+        description: "Correo electrónico del contacto.",
+      },
       student_first_name: {
         type: "string",
         description: "Nombre del estudiante.",
@@ -122,6 +126,7 @@ const CREATE_LEAD_TOOL: ResponseTool = {
       "current_school",
       "summary",
       "source",
+      "contact_email",
     ],
     additionalProperties: false,
   },
@@ -437,8 +442,7 @@ const generateChatbotReply = async ({
       model,
     });
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     const callIdMatch = errorMessage.match(/function call (call_[A-Za-z0-9]+)/);
     if (callIdMatch && conversationId) {
       await openAIService.submitToolOutputs({

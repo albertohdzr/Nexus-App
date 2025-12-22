@@ -41,8 +41,12 @@ function formatHour(dateStr: string) {
   })
 }
 
-function formatDateLabel(dateStr: string) {
-  const date = new Date(dateStr)
+function toLocalDateKey(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-CA")
+}
+
+function formatDateLabel(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00`)
   return date.toLocaleDateString("es-MX", {
     weekday: "short",
     month: "short",
@@ -60,7 +64,7 @@ export function AppointmentCalendar({
   const [isPending, startTransition] = useTransition()
 
   const slotsByDate = slots.reduce<Record<string, Slot[]>>((acc, slot) => {
-    const dateKey = slot.starts_at.slice(0, 10)
+    const dateKey = toLocalDateKey(slot.starts_at)
     acc[dateKey] = [...(acc[dateKey] || []), slot]
     return acc
   }, {})

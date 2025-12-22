@@ -6,7 +6,7 @@ import {
   HANDOFF_RESPONSE_TEXT,
 } from "@/src/lib/ai/chatbot";
 import { openAIService } from "@/src/lib/ai/open";
-import { sendWhatsAppText } from "@/src/lib/whatsapp";
+import { sendWhatsAppRead, sendWhatsAppText } from "@/src/lib/whatsapp";
 
 type ProcessRequest = {
   chat_id?: string;
@@ -122,6 +122,31 @@ export async function POST(request: Request) {
   if (orgError || !organization) {
     console.error("Organization not found", orgError);
     return new NextResponse("Organization not found", { status: 404 });
+  }
+
+  try {
+    const { data: latestInbound } = await supabase
+      .from("messages")
+      .select("wa_message_id")
+      .eq("chat_id", chat.id)
+      .eq("status", "received")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestInbound?.wa_message_id && organization.phone_number_id) {
+      const { error: readError } = await sendWhatsAppRead({
+        phoneNumberId: organization.phone_number_id,
+        accessToken: whatsappAccessToken,
+        messageId: latestInbound.wa_message_id,
+      });
+
+      if (readError) {
+        console.error("WhatsApp read receipt error:", readError);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to send WhatsApp read indicator:", error);
   }
 
   if (!organization.phone_number_id) {
@@ -305,6 +330,7 @@ export async function POST(request: Request) {
   ): Promise<{ leadId: string | null; contactId: string | null }> => {
     const contactName = String(args.contact_name || "").trim();
     const contactPhone = String(args.contact_phone || "").trim();
+    const contactEmail = String(args.contact_email || "").trim() || null;
     const studentFirstName = String(args.student_first_name || "").trim();
     const studentLastNamePaternal = String(
       args.student_last_name_paternal || "",
@@ -342,6 +368,7 @@ export async function POST(request: Request) {
           first_name: firstName || null,
           last_name_paternal: lastNamePaternal || null,
           phone: contactPhone,
+          ...(contactEmail ? { email: contactEmail } : {}),
           whatsapp_wa_id: chat.wa_id,
           updated_at: nowIso,
         })
@@ -354,6 +381,7 @@ export async function POST(request: Request) {
           first_name: firstName || null,
           last_name_paternal: lastNamePaternal || null,
           phone: contactPhone,
+          email: contactEmail,
           whatsapp_wa_id: chat.wa_id,
           source,
           created_at: nowIso,
@@ -386,15 +414,16 @@ export async function POST(request: Request) {
     if (existingLead?.id) {
       const { error: updateError } = await supabase
         .from("leads")
-        .update({
-          contact_id: contactId,
-          contact_name: contactName,
-          contact_first_name: firstName || null,
-          contact_last_name_paternal: lastNamePaternal || null,
-          contact_phone: contactPhone,
-          student_first_name: studentFirstName,
-          student_last_name_paternal: studentLastNamePaternal,
-          grade_interest: gradeInterest,
+      .update({
+        contact_id: contactId,
+        contact_name: contactName,
+        contact_first_name: firstName || null,
+        contact_last_name_paternal: lastNamePaternal || null,
+        ...(contactEmail ? { contact_email: contactEmail } : {}),
+        contact_phone: contactPhone,
+        student_first_name: studentFirstName,
+        student_last_name_paternal: studentLastNamePaternal,
+        grade_interest: gradeInterest,
           current_school: currentSchool,
           source,
           wa_chat_id: chat.id,
@@ -419,6 +448,7 @@ export async function POST(request: Request) {
         contact_name: contactName,
         contact_first_name: firstName || null,
         contact_last_name_paternal: lastNamePaternal || null,
+        contact_email: contactEmail,
         contact_phone: contactPhone,
         student_first_name: studentFirstName,
         student_last_name_paternal: studentLastNamePaternal,
@@ -652,6 +682,19 @@ export async function POST(request: Request) {
             output: JSON.stringify({ status: "failed" }),
           });
           continue;
+        }
+
+        const { error: leadUpdateError } = await supabase
+          .from("leads")
+          .update({
+            status: "visit_scheduled",
+            updated_at: nowIso,
+          })
+          .eq("id", leadResult.leadId)
+          .eq("organization_id", organization.id);
+
+        if (leadUpdateError) {
+          console.error("Error updating lead status", leadUpdateError);
         }
 
         const { error: slotUpdateError } = await supabase

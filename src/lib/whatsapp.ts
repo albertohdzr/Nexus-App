@@ -2,6 +2,7 @@ import {
   SendWhatsAppAudioParams,
   SendWhatsAppDocumentParams,
   SendWhatsAppImageParams,
+  SendWhatsAppReadParams,
   SendWhatsAppTextParams,
   UploadWhatsAppMediaParams,
 } from "@/src/types/whatsapp";
@@ -50,6 +51,43 @@ export async function sendWhatsAppText({
 
   const messageId = data.messages?.[0]?.id as string | undefined;
   return { messageId };
+}
+
+export async function sendWhatsAppRead({
+  phoneNumberId,
+  accessToken,
+  messageId,
+  typingType = "text",
+}: SendWhatsAppReadParams): Promise<{ error?: string }> {
+  const payload = {
+    messaging_product: "whatsapp",
+    status: "read",
+    message_id: messageId,
+    typing_indicator: {
+      type: typingType,
+    },
+  };
+
+  const response = await fetch(
+    `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const errorMessage = data?.error?.message || "Unknown WhatsApp API error";
+    return { error: errorMessage };
+  }
+
+  return {};
 }
 
 export async function uploadWhatsAppMedia({

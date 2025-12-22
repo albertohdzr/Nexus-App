@@ -53,29 +53,36 @@ async function handleStatusUpdates(value: WhatsAppValue) {
       .eq("wa_message_id", messageId);
 
     if (error) {
-      console.error("Error updating message status:", error, { messageId, nextStatus });
+      console.error("Error updating message status:", error, {
+        messageId,
+        nextStatus,
+      });
     } else {
-      console.log("Updated message status", { messageId, nextStatus, statusTimestamp });
+      console.log("Updated message status", {
+        messageId,
+        nextStatus,
+        statusTimestamp,
+      });
     }
   }
 }
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const mode = searchParams.get('hub.mode');
-  const token = searchParams.get('hub.verify_token');
-  const challenge = searchParams.get('hub.challenge');
+  const mode = searchParams.get("hub.mode");
+  const token = searchParams.get("hub.verify_token");
+  const challenge = searchParams.get("hub.challenge");
 
   if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('WEBHOOK_VERIFIED');
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+      console.log("WEBHOOK_VERIFIED");
       return new NextResponse(challenge, { status: 200 });
     } else {
-      return new NextResponse('Forbidden', { status: 403 });
+      return new NextResponse("Forbidden", { status: 403 });
     }
   }
 
-  return new NextResponse('Bad Request', { status: 400 });
+  return new NextResponse("Bad Request", { status: 400 });
 }
 
 export async function POST(request: Request) {
@@ -87,7 +94,9 @@ export async function POST(request: Request) {
       return new NextResponse("Not a WhatsApp API event", { status: 404 });
     }
 
-    const value = body.entry?.[0]?.changes?.[0]?.value as WhatsAppValue | undefined;
+    const value = body.entry?.[0]?.changes?.[0]?.value as
+      | WhatsAppValue
+      | undefined;
 
     if (value) {
       const messages = Array.isArray(value.messages) ? [...value.messages] : [];
@@ -109,7 +118,10 @@ export async function POST(request: Request) {
           .single();
 
         if (orgError || !orgData) {
-          console.error("Organization not found for phone_number_id:", phoneNumberId);
+          console.error(
+            "Organization not found for phone_number_id:",
+            phoneNumberId,
+          );
           return new NextResponse("EVENT_RECEIVED", { status: 200 });
         }
 
@@ -154,7 +166,8 @@ export async function POST(request: Request) {
           let mediaUrl: string | undefined;
           let mediaPath: string | undefined;
           const isImage = message.type === "image" && message.image?.id;
-          const isDocument = message.type === "document" && message.document?.id;
+          const isDocument = message.type === "document" &&
+            message.document?.id;
           const isAudio = message.type === "audio" && message.audio?.id;
           const mediaId = isImage
             ? message.image?.id
@@ -170,7 +183,9 @@ export async function POST(request: Request) {
             : isAudio
             ? message.audio?.mime_type
             : undefined;
-          const mediaFileName = isDocument ? message.document?.filename : undefined;
+          const mediaFileName = isDocument
+            ? message.document?.filename
+            : undefined;
           const mediaCaption = isImage ? message.image?.caption : undefined;
 
           if (mediaId) {
@@ -179,9 +194,10 @@ export async function POST(request: Request) {
                 `https://graph.facebook.com/v21.0/${mediaId}`,
                 {
                   headers: {
-                    Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                    Authorization:
+                      `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
                   },
-                }
+                },
               );
               if (metaResponse.ok) {
                 const meta = await metaResponse.json();
@@ -191,33 +207,44 @@ export async function POST(request: Request) {
                 if (url) {
                   const mediaResponse = await fetch(url, {
                     headers: {
-                      Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+                      Authorization:
+                        `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
                     },
                   });
                   if (mediaResponse.ok) {
                     const arrayBuffer = await mediaResponse.arrayBuffer();
-                    const storagePath = `chats/${chatRecord.id}/${mediaId}-${mediaFileName || "file"}`;
-                    const { path: storedPath, error: storageError } = await uploadToStorage({
-                      file: Buffer.from(arrayBuffer),
-                      path: storagePath,
-                      contentType: mimeType,
-                    });
+                    const storagePath = `chats/${chatRecord.id}/${mediaId}-${
+                      mediaFileName || "file"
+                    }`;
+                    const { path: storedPath, error: storageError } =
+                      await uploadToStorage({
+                        file: Buffer.from(arrayBuffer),
+                        path: storagePath,
+                        contentType: mimeType,
+                      });
                     if (storageError) {
-                      console.error("Storage upload error (inbound media):", storageError);
+                      console.error(
+                        "Storage upload error (inbound media):",
+                        storageError,
+                      );
                     } else {
                       mediaPath = storedPath ?? storagePath;
-                      mediaUrl = `/api/storage/media?path=${encodeURIComponent(mediaPath)}`;
+                      mediaUrl = `/api/storage/media?path=${
+                        encodeURIComponent(mediaPath)
+                      }`;
                     }
                   }
                 }
               }
             } catch (storageErr) {
-              console.error("Error downloading/uploading inbound media:", storageErr);
+              console.error(
+                "Error downloading/uploading inbound media:",
+                storageErr,
+              );
             }
           }
 
-          const messageBody =
-            message.text?.body ||
+          const messageBody = message.text?.body ||
             message.image?.caption ||
             message.document?.filename ||
             (message.audio ? "Mensaje de voz" : undefined) ||
@@ -226,32 +253,34 @@ export async function POST(request: Request) {
           const messageTimestampMs = message.timestamp
             ? parseInt(message.timestamp, 10) * 1000
             : Date.now();
-          const messageTimestampIso = new Date(messageTimestampMs).toISOString();
+          const messageTimestampIso = new Date(messageTimestampMs)
+            .toISOString();
 
-          const { error: messageError } = await supabase.from("messages").insert({
-            chat_id: chatRecord.id,
-            chat_session_id: null, // No session linking
-            wa_message_id: message.id,
-            body: messageBody,
-            type: message.type,
-            status: "received",
-            payload: {
-              ...message,
+          const { error: messageError } = await supabase.from("messages")
+            .insert({
+              chat_id: chatRecord.id,
+              chat_session_id: null, // No session linking
+              wa_message_id: message.id,
+              body: messageBody,
+              type: message.type,
+              status: "received",
+              payload: {
+                ...message,
+                media_id: mediaId,
+                media_mime_type: mediaMime,
+                media_file_name: mediaFileName,
+                media_caption: mediaCaption,
+                voice: message.audio?.voice,
+                conversation_id: null,
+              },
+              wa_timestamp: messageTimestampIso,
+              sender_name: name,
               media_id: mediaId,
+              media_path: mediaPath,
+              media_url: mediaUrl,
               media_mime_type: mediaMime,
-              media_file_name: mediaFileName,
-              media_caption: mediaCaption,
-              voice: message.audio?.voice,
-              conversation_id: null,
-            },
-            wa_timestamp: messageTimestampIso,
-            sender_name: name,
-            media_id: mediaId,
-            media_path: mediaPath,
-            media_url: mediaUrl,
-            media_mime_type: mediaMime,
-            created_at: messageTimestampIso,
-          });
+              created_at: messageTimestampIso,
+            });
 
           if (messageError) {
             console.error("Error inserting message:", messageError);
@@ -282,7 +311,10 @@ export async function POST(request: Request) {
           );
 
           if (functionError) {
-            console.error("Error invoking process-whatsapp-queue:", functionError);
+            console.error(
+              "Error invoking process-whatsapp-queue:",
+              functionError,
+            );
           }
         }
       }

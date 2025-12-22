@@ -142,6 +142,13 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
     .eq("organization_id", profile.organization_id)
     .order("start_date", { ascending: false })
 
+  const { data: appointments } = await supabase
+    .from("appointments")
+    .select("id, starts_at, ends_at, campus, type, status, notes")
+    .eq("organization_id", profile.organization_id)
+    .eq("lead_id", leadId)
+    .order("starts_at", { ascending: true })
+
   const chat = Array.isArray(lead.chat) ? lead.chat[0] : lead.chat
   const normalized: LeadRecord = {
     ...lead,
@@ -178,6 +185,15 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
   const emails = [...(normalized.emails ?? [])].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
+  const now = Date.now()
+  const nextAppointment =
+    appointments?.find((appointment) => {
+      const start = new Date(appointment.starts_at).getTime()
+      return !Number.isNaN(start) && start >= now
+    }) ?? null
+  const latestAppointment =
+    appointments && appointments.length ? appointments[appointments.length - 1] : null
+  const currentAppointment = nextAppointment ?? latestAppointment
 
   return (
     <div className="flex flex-col gap-6">
@@ -328,6 +344,45 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
         </div>
 
         <div className="space-y-4">
+          <section className="rounded-xl border bg-card p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">Cita</h3>
+              <Badge variant="outline">
+                {appointments?.length ?? 0} cita{(appointments?.length ?? 0) === 1 ? "" : "s"}
+              </Badge>
+            </div>
+            {currentAppointment ? (
+              <div className="space-y-2 text-sm">
+                <div className="font-medium">
+                  {new Date(currentAppointment.starts_at).toLocaleString("es-MX", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </div>
+                {currentAppointment.ends_at ? (
+                  <div className="text-xs text-muted-foreground">
+                    Hasta{" "}
+                    {new Date(currentAppointment.ends_at).toLocaleTimeString("es-MX", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                ) : null}
+                <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+                  <span>{statusLabel(currentAppointment.status || "scheduled")}</span>
+                  {currentAppointment.type ? <span>• {currentAppointment.type}</span> : null}
+                  {currentAppointment.campus ? <span>• {currentAppointment.campus}</span> : null}
+                </div>
+                {currentAppointment.notes ? (
+                  <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+                    {currentAppointment.notes}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Aún no hay cita registrada.</p>
+            )}
+          </section>
           <section className="rounded-xl border bg-card p-5 space-y-3">
             <h3 className="text-base font-semibold">Enviar follow up</h3>
             <LeadFollowUpForm

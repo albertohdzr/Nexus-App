@@ -63,3 +63,10 @@ export type SendWhatsAppAudioParams = {
   mediaId: string;
   voice?: boolean;
 };
+
+export type SendWhatsAppReadParams = {
+  phoneNumberId: string;
+  accessToken: string;
+  messageId: string;
+  typingType?: "text";
+};
