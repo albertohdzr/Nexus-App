@@ -120,13 +120,13 @@ const CREATE_LEAD_TOOL: ResponseTool = {
     required: [
       "contact_name",
       "contact_phone",
+      "contact_email",
       "student_first_name",
       "student_last_name_paternal",
       "grade_interest",
       "current_school",
       "summary",
       "source",
-      "contact_email",
     ],
     additionalProperties: false,
   },
@@ -274,6 +274,26 @@ const SCHEDULE_VISIT_TOOL: ResponseTool = {
   },
 };
 
+const SEND_REQUIREMENTS_PDF_TOOL: ResponseTool = {
+  type: "function",
+  name: "send_requirements_pdf",
+  description:
+    "Envía el PDF de requisitos para la división solicitada.",
+  parameters: {
+    type: "object",
+    properties: {
+      division: {
+        type: "string",
+        description:
+          "División académica: prenursery, early_child, elementary, middle_school, high_school.",
+      },
+    },
+    required: ["division"],
+    additionalProperties: false,
+  },
+  strict: true,
+};
+
 const LIST_AVAILABLE_APPOINTMENTS_TOOL: ResponseTool = {
   type: "function",
   name: "list_available_appointments",
@@ -417,6 +437,7 @@ const generateChatbotReply = async ({
     tools.push(GET_FINANCE_TOOL);
   }
   tools.push(CREATE_COMPLAINT_TOOL);
+  tools.push(SEND_REQUIREMENTS_PDF_TOOL);
   if (context.appointmentsEnabled) {
     tools.push(LIST_AVAILABLE_APPOINTMENTS_TOOL);
     tools.push(SCHEDULE_VISIT_TOOL);

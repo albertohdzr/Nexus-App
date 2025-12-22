@@ -6,7 +6,12 @@ import {
   HANDOFF_RESPONSE_TEXT,
 } from "@/src/lib/ai/chatbot";
 import { openAIService } from "@/src/lib/ai/open";
-import { sendWhatsAppRead, sendWhatsAppText } from "@/src/lib/whatsapp";
+import {
+  sendWhatsAppDocument,
+  sendWhatsAppRead,
+  sendWhatsAppText,
+  uploadWhatsAppMedia,
+} from "@/src/lib/whatsapp";
 
 type ProcessRequest = {
   chat_id?: string;
@@ -330,7 +335,21 @@ export async function POST(request: Request) {
   ): Promise<{ leadId: string | null; contactId: string | null }> => {
     const contactName = String(args.contact_name || "").trim();
     const contactPhone = String(args.contact_phone || "").trim();
-    const contactEmail = String(args.contact_email || "").trim() || null;
+    const contactEmailRaw = String(args.contact_email || "").trim();
+    const contactEmail = (() => {
+      if (!contactEmailRaw) return null;
+      const normalized = contactEmailRaw.toLowerCase();
+      if (
+        normalized.includes("sin correo") ||
+        normalized.includes("no tengo") ||
+        normalized.includes("no cuento") ||
+        normalized === "na" ||
+        normalized === "n/a"
+      ) {
+        return null;
+      }
+      return contactEmailRaw;
+    })();
     const studentFirstName = String(args.student_first_name || "").trim();
     const studentLastNamePaternal = String(
       args.student_last_name_paternal || "",
@@ -497,6 +516,147 @@ export async function POST(request: Request) {
           output: JSON.stringify({
             status: result.leadId ? "created" : "failed",
             lead_id: result.leadId,
+          }),
+        });
+        continue;
+      }
+
+      if (call.name === "send_requirements_pdf") {
+        const divisionRaw = String(args.division || "").trim().toLowerCase();
+        const normalizedDivision = divisionRaw
+          .replace(/\s+/g, "_")
+          .replace(/-/g, "_");
+        const allowedDivisions = new Set([
+          "prenursery",
+          "early_child",
+          "elementary",
+          "middle_school",
+          "high_school",
+        ]);
+
+        if (!allowedDivisions.has(normalizedDivision)) {
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({
+              status: "failed",
+              error: "invalid_division",
+            }),
+          });
+          continue;
+        }
+
+        const { data: document, error: documentError } = await supabase
+          .from("admission_requirement_documents")
+          .select("id, file_path, file_name, mime_type, storage_bucket, title")
+          .eq("organization_id", organization.id)
+          .eq("division", normalizedDivision)
+          .eq("is_active", true)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (documentError) {
+          console.error("Error fetching requirements document", documentError);
+        }
+
+        if (!document?.file_path) {
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "not_found" }),
+          });
+          continue;
+        }
+
+        const bucket =
+          document.storage_bucket ||
+          process.env.SUPABASE_MEDIA_BUCKET ||
+          "whatsapp-media";
+
+        const { data: fileBlob, error: downloadError } = await supabase.storage
+          .from(bucket)
+          .download(document.file_path);
+
+        if (downloadError || !fileBlob) {
+          console.error("Error downloading requirements PDF", downloadError);
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "failed" }),
+          });
+          continue;
+        }
+
+        const mimeType = document.mime_type || "application/pdf";
+        const fileName =
+          document.file_name ||
+          `requisitos-${normalizedDivision}.pdf`;
+
+        const { mediaId, error: uploadError } = await uploadWhatsAppMedia({
+          phoneNumberId: organization.phone_number_id,
+          accessToken: whatsappAccessToken,
+          file: fileBlob,
+          mimeType,
+          fileName,
+        });
+
+        if (uploadError || !mediaId) {
+          console.error("WhatsApp media upload error:", uploadError);
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "failed" }),
+          });
+          continue;
+        }
+
+        const { messageId, error: sendError } = await sendWhatsAppDocument({
+          phoneNumberId: organization.phone_number_id,
+          accessToken: whatsappAccessToken,
+          to: chat.wa_id,
+          mediaId,
+          fileName,
+          caption: document.title || undefined,
+        });
+
+        if (sendError) {
+          console.error("WhatsApp document send error:", sendError);
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "failed" }),
+          });
+          continue;
+        }
+
+        if (messageId) {
+          const payloadData = {
+            media_id: mediaId,
+            media_mime_type: mimeType,
+            media_file_name: fileName,
+            caption: document.title || null,
+          };
+
+          const { error: insertError } = await supabase.from("messages").insert({
+            chat_id: chat.id,
+            chat_session_id: session.id,
+            wa_message_id: messageId,
+            body: document.title || fileName,
+            type: "document",
+            status: "sent",
+            sent_at: nowIso,
+            sender_name: organization.bot_name || "Bot",
+            payload: payloadData,
+            response_id: null,
+            created_at: nowIso,
+          });
+
+          if (insertError) {
+            console.error("Error inserting requirements document message:", insertError);
+          }
+        }
+
+        toolOutputs.push({
+          tool_call_id: callId,
+          output: JSON.stringify({
+            status: "sent",
+            division: normalizedDivision,
           }),
         });
         continue;
