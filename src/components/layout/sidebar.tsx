@@ -1,185 +1,212 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { cn } from "@/src/lib/utils"
 import {
     LayoutDashboard,
+    MessageSquare,
     Users,
-    Briefcase,
-    Folder,
-    Contact,
-    Package,
-    Store,
-    Activity,
-    FileText,
-    Megaphone,
-    Inbox,
-    CheckSquare,
-    Calendar,
-    HelpCircle,
     Settings,
-    Search,
-    Command,
+    FileText,
+    Calendar,
+    Bot,
+    Book,
+    GraduationCap,
+    Files,
     ChevronRight,
-    Shield,
-    UserX
 } from "lucide-react"
-import { Input } from "@/src/components/ui/input"
+
+import {
+    Sidebar as SidebarPrimitive,
+    SidebarContent,
+    SidebarFooter,
+    SidebarGroup,
+    SidebarGroupContent,
+    SidebarGroupLabel,
+    SidebarHeader,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarRail,
+    SidebarMenuSub,
+    SidebarMenuSubButton,
+    SidebarMenuSubItem,
+} from "@/src/components/ui/sidebar"
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/src/components/ui/collapsible"
 import { UserNav } from "@/src/components/layout/user-nav"
 
-const menuItems = [
-    { title: "Dashboard", icon: LayoutDashboard, href: "/home" },
-    { title: "Leads", icon: Users, href: "/crm/leads" },
-    { title: "Deals", icon: Briefcase, href: "/crm/deals" },
-    { title: "Projects", icon: Folder, href: "/projects" },
-    { title: "Contacts", icon: Contact, href: "/contacts" },
-    { title: "Products", icon: Package, href: "/products" },
-    { title: "Marketplace", icon: Store, href: "/marketplace" },
-]
+interface SidebarProps extends React.ComponentProps<typeof SidebarPrimitive> {
+    organizationSlug: string
+}
 
-const insightItems = [
-    { title: "Activities", icon: Activity, href: "/crm/activities" },
-    { title: "Reports", icon: FileText, href: "/reports" },
-    { title: "Campaigns", icon: Megaphone, href: "/campaigns" },
-    { title: "Inbox", icon: Inbox, href: "/inbox" },
-    { title: "Tasks", icon: CheckSquare, href: "/tasks" },
-    { title: "Calendar", icon: Calendar, href: "/calendar" },
-]
-
-export function Sidebar() {
+export function Sidebar({ organizationSlug, ...props }: SidebarProps) {
     const pathname = usePathname()
 
     return (
-        <div className="flex flex-col h-full w-64 border-r bg-sidebar text-sidebar-foreground">
-            {/* Header */}
-            <div className="h-14 flex items-center px-4 gap-2 border-b border-sidebar-border/50">
-                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground font-bold">
-                    <div className="w-4 h-4 bg-current rounded-full animate-pulse" />
-                </div>
-                <span className="font-semibold text-lg">Bright</span>
-                <div className="ml-auto text-muted-foreground">
-                    <ChevronRight className="w-4 h-4" />
-                </div>
-            </div>
+        <SidebarPrimitive collapsible="icon" {...props}>
+            <SidebarHeader>
+                <SidebarMenu>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton size="lg" asChild>
+                            <Link href="/home">
+                                <div className="flex aspect-square size-8 items-center justify-center rounded-lg text-primary-foreground">
+                                    <Image
+                                        src="/nexus-logo.svg"
+                                        alt="Nexus Logo"
+                                        width={24}
+                                        height={24}
+                                        className="size-6"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-0.5 leading-none">
+                                    <span className="font-semibold">{organizationSlug.toUpperCase()}</span>
+                                    <span className="">Nexus</span>
+                                </div>
+                            </Link>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
+            </SidebarHeader>
+            <SidebarContent>
+                <SidebarGroup>
+                    <SidebarGroupLabel>Platform</SidebarGroupLabel>
+                    <SidebarGroupContent>
+                        <SidebarMenu>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild isActive={pathname === "/home"}>
+                                    <Link href="/home">
+                                        <LayoutDashboard />
+                                        <span>Home</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        </SidebarMenu>
+                    </SidebarGroupContent>
+                </SidebarGroup>
 
-            {/* Search */}
-            <div className="px-3 py-4">
-                <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search"
-                        className="pl-8 bg-sidebar-accent/50 border-sidebar-border h-9"
-                    />
-                    <div className="absolute right-2 top-2.5 flex items-center gap-1">
-                        <Command className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">K</span>
-                    </div>
-                </div>
-            </div>
+                <SidebarGroup>
+                    <SidebarGroupLabel>Modules</SidebarGroupLabel>
+                    <SidebarGroupContent>
+                        <SidebarMenu>
+                            {/* Admissions Group */}
+                            <Collapsible defaultOpen className="group/collapsible">
+                                <SidebarMenuItem>
+                                    <CollapsibleTrigger asChild>
+                                        <SidebarMenuButton tooltip="Admissions">
+                                            <GraduationCap />
+                                            <span>Admissions</span>
+                                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                        </SidebarMenuButton>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent>
+                                        <SidebarMenuSub>
+                                            <SidebarMenuSubItem>
+                                                <SidebarMenuSubButton asChild isActive={pathname === "/admissions/cycles"}>
+                                                    <Link href="/admissions/cycles">
+                                                        <span>Cycles</span>
+                                                    </Link>
+                                                </SidebarMenuSubButton>
+                                            </SidebarMenuSubItem>
+                                            <SidebarMenuSubItem>
+                                                <SidebarMenuSubButton asChild isActive={pathname === "/admissions/documents"}>
+                                                    <Link href="/admissions/documents">
+                                                        <span>Documents</span>
+                                                    </Link>
+                                                </SidebarMenuSubButton>
+                                            </SidebarMenuSubItem>
+                                        </SidebarMenuSub>
+                                    </CollapsibleContent>
+                                </SidebarMenuItem>
+                            </Collapsible>
 
-            <div className="flex-1 overflow-y-auto py-2 px-3 gap-6 flex flex-col">
-                {/* Menu Section */}
-                <div>
-                    <h3 className="mb-2 px-2 text-xs font-medium text-muted-foreground">Menu</h3>
-                    <nav className="grid gap-1">
-                        {menuItems.map((item) => {
-                            const isActive = pathname === item.href || pathname.startsWith(item.href)
-                            const Icon = item.icon
-                            return (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    className={cn(
-                                        "flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                                        isActive
-                                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                                            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                                    )}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <Icon className="h-4 w-4" />
-                                        <span>{item.title}</span>
-                                    </div>
-                                    {isActive && (
-                                        <span className="flex h-1.5 w-1.5 rounded-full bg-primary" />
-                                    )}
-                                </Link>
-                            )
-                        })}
-                    </nav>
-                </div>
+                             {/* Chat Group */}
+                             <SidebarMenuItem>
+                                <SidebarMenuButton asChild isActive={pathname === "/chat"}>
+                                    <Link href="/chat">
+                                        <MessageSquare />
+                                        <span>Chat</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            
+                            {/* CRM Group */}
+                            <Collapsible defaultOpen className="group/collapsible">
+                                <SidebarMenuItem>
+                                    <CollapsibleTrigger asChild>
+                                        <SidebarMenuButton tooltip="CRM">
+                                            <Users />
+                                            <span>CRM</span>
+                                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                        </SidebarMenuButton>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent>
+                                        <SidebarMenuSub>
+                                            <SidebarMenuSubItem>
+                                                <SidebarMenuSubButton asChild isActive={pathname === "/crm/leads"}>
+                                                    <Link href="/crm/leads">
+                                                        <span>Leads</span>
+                                                    </Link>
+                                                </SidebarMenuSubButton>
+                                            </SidebarMenuSubItem>
+                                            <SidebarMenuSubItem>
+                                                <SidebarMenuSubButton asChild isActive={pathname === "/crm/appointments"}>
+                                                    <Link href="/crm/appointments">
+                                                        <span>Appointments</span>
+                                                    </Link>
+                                                </SidebarMenuSubButton>
+                                            </SidebarMenuSubItem>
+                                        </SidebarMenuSub>
+                                    </CollapsibleContent>
+                                </SidebarMenuItem>
+                            </Collapsible>
+                        </SidebarMenu>
+                    </SidebarGroupContent>
+                </SidebarGroup>
 
-                {/* Insights Section */}
-                <div>
-                    <h3 className="mb-2 px-2 text-xs font-medium text-muted-foreground">Insights</h3>
-                    <nav className="grid gap-1">
-                        {insightItems.map((item) => {
-                            const isActive = pathname === item.href
-                            const Icon = item.icon
-                            return (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    className={cn(
-                                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                                        isActive
-                                            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                                            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                                    )}
-                                >
-                                    <Icon className="h-4 w-4" />
-                                    <span>{item.title}</span>
-                                </Link>
-                            )
-                        })}
-                    </nav>
-                </div>
-            </div>
-
-            {/* Footer */}
-            <div className="mt-auto p-3 border-t border-sidebar-border/50 gap-1 flex flex-col">
-                <Link
-                    href="/help"
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                    <HelpCircle className="h-4 w-4" />
-                    <span>Help Center</span>
-                </Link>
-                <Link
-                    href="/privacy-policy"
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                    <Shield className="h-4 w-4" />
-                    <span>Privacy Policy</span>
-                </Link>
-                <Link
-                    href="/terms-of-service"
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                    <FileText className="h-4 w-4" />
-                    <span>Terms of Service</span>
-                </Link>
-                <Link
-                    href="/data-deletion"
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                    <UserX className="h-4 w-4" />
-                    <span>Data Deletion</span>
-                </Link>
-                <Link
-                    href="/settings"
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                >
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                </Link>
-
-                <div className="mt-2 pt-2 border-t border-sidebar-border/50">
+                <SidebarGroup>
+                    <SidebarGroupLabel>Settings</SidebarGroupLabel>
+                    <SidebarGroupContent>
+                        <SidebarMenu>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild isActive={pathname === "/settings"}>
+                                    <Link href="/settings">
+                                        <Settings />
+                                        <span>General</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild isActive={pathname === "/settings/bot"}>
+                                    <Link href="/settings/bot">
+                                        <Bot />
+                                        <span>Bot</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild isActive={pathname === "/settings/directory"}>
+                                    <Link href="/settings/directory">
+                                        <Book />
+                                        <span>Directory</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        </SidebarMenu>
+                    </SidebarGroupContent>
+                </SidebarGroup>
+            </SidebarContent>
+            <SidebarFooter>
+                <div className="p-1">
                     <UserNav showDetails />
                 </div>
-            </div>
-        </div>
+            </SidebarFooter>
+            <SidebarRail />
+        </SidebarPrimitive>
     )
 }
 

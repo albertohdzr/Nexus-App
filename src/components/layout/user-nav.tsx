@@ -63,19 +63,19 @@ export function UserNav({ showDetails = false }: UserNavProps) {
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className={cn("relative h-8 w-8 rounded-full", showDetails && "h-auto w-full justify-start px-2 rounded-lg hover:bg-sidebar-accent")}>
-                    <Avatar className="h-8 w-8">
+                <Button variant="ghost" className={cn("relative h-8 w-8 rounded-full overflow-hidden", showDetails && "h-auto w-full justify-start px-2 rounded-lg hover:bg-sidebar-accent")}>
+                    <Avatar className="h-8 w-8 shrink-0">
                         <AvatarImage src={user.user_metadata?.avatar_url} alt={fullName} />
                         <AvatarFallback>{initials}</AvatarFallback>
                     </Avatar>
                     {showDetails && (
-                        <div className="flex flex-col items-start ml-3 text-sm">
-                            <span className="font-medium">{fullName}</span>
-                            <span className="text-xs text-muted-foreground">{email}</span>
+                        <div className="flex flex-col items-start ml-3 text-sm flex-1 min-w-0 pr-2">
+                            <span className="font-medium truncate w-full text-left">{fullName}</span>
+                            <span className="text-xs text-muted-foreground truncate w-full text-left">{email}</span>
                         </div>
                     )}
                     {showDetails && (
-                        <div className="ml-auto">
+                        <div className="ml-auto shrink-0">
                             <Settings className="h-4 w-4 text-muted-foreground" />
                         </div>
                     )}

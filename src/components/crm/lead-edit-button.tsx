@@ -2,11 +2,13 @@
 
 import { useActionState, useMemo, useState } from "react"
 import { Pencil } from "lucide-react"
+import { Separator } from "@/src/components/ui/separator"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/src/components/ui/sheet"
 import { cn } from "@/src/lib/utils"
+import { statusLabel } from "@/src/lib/lead"
 import type { LeadRecord } from "@/src/types/lead"
 import type { AdmissionCycle } from "@/src/types/admission"
 import type { UpdateLeadAction, UpdateLeadActionState } from "@/src/app/(dashboard)/crm/leads/actions"
@@ -53,157 +55,184 @@ export function LeadEditButton({ lead, updateLeadAction, cycles = [], className 
           Editar lead
         </Button>
       </SheetTrigger>
-      <SheetContent className="sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Editar lead</SheetTitle>
-        </SheetHeader>
+      <SheetContent className="sm:max-w-2xl overflow-y-auto w-full p-0">
+        <div className="p-6 pb-0">
+            <SheetHeader className="mb-4">
+            <SheetTitle>Editar Información del Lead</SheetTitle>
+            </SheetHeader>
+        </div>
+        
         <form
           action={formAction}
-          className="mt-4 space-y-3"
+          className="flex flex-col gap-6 p-6 pt-0"
           onSubmit={() => setOpen(true)}
         >
           <input type="hidden" name="leadId" value={lead.id} />
           <input type="hidden" name="status" value={statusValue} />
           <input type="hidden" name="cycle_id" value={cycleId || ""} />
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Nombre estudiante</label>
-              <Input
-                name="student_first_name"
-                defaultValue={lead.student_first_name || lead.student_name || ""}
-                required
-              />
+          {/* Student Info */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Estudiante</h3>
+                <Separator className="flex-1" />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Apellido paterno estudiante</label>
-              <Input
-                name="student_last_name_paternal"
-                defaultValue={lead.student_last_name_paternal || ""}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Segundo nombre estudiante</label>
-              <Input
-                name="student_middle_name"
-                defaultValue={lead.student_middle_name || ""}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Apellido materno estudiante</label>
-              <Input
-                name="student_last_name_maternal"
-                defaultValue={lead.student_last_name_maternal || ""}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Contacto - Nombre</label>
-              <Input
-                name="contact_first_name"
-                defaultValue={lead.contact_first_name || lead.contact_full_name || ""}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Contacto - Apellido paterno</label>
-              <Input
-                name="contact_last_name_paternal"
-                defaultValue={lead.contact_last_name_paternal || ""}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Contacto - Segundo nombre</label>
-              <Input
-                name="contact_middle_name"
-                defaultValue={lead.contact_middle_name || ""}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Contacto - Apellido materno</label>
-              <Input
-                name="contact_last_name_maternal"
-                defaultValue={lead.contact_last_name_maternal || ""}
-              />
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Nombre(s)</label>
+                <Input
+                    name="student_first_name"
+                    defaultValue={lead.student_first_name || lead.student_name || ""}
+                    placeholder="Ej. Juan"
+                    required
+                />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Segundo nombre</label>
+                <Input
+                    name="student_middle_name"
+                    defaultValue={lead.student_middle_name || ""}
+                />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Apellido Paterno</label>
+                <Input
+                    name="student_last_name_paternal"
+                    defaultValue={lead.student_last_name_paternal || ""}
+                    placeholder="Ej. Pérez"
+                    required
+                />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Apellido Materno</label>
+                <Input
+                    name="student_last_name_maternal"
+                    defaultValue={lead.student_last_name_maternal || ""}
+                />
+                </div>
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Correo de contacto</label>
-            <Input name="contact_email" type="email" defaultValue={lead.contact_email || ""} />
+          {/* Contact Info */}
+          <div className="space-y-4">
+             <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Contacto Principal</h3>
+                <Separator className="flex-1" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Nombre(s)</label>
+                <Input
+                    name="contact_first_name"
+                    defaultValue={lead.contact_first_name || lead.contact_full_name || ""}
+                    required
+                />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Segundo nombre</label>
+                <Input
+                    name="contact_middle_name"
+                    defaultValue={lead.contact_middle_name || ""}
+                />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Apellido Paterno</label>
+                <Input
+                    name="contact_last_name_paternal"
+                    defaultValue={lead.contact_last_name_paternal || ""}
+                    required
+                />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Apellido Materno</label>
+                <Input
+                    name="contact_last_name_maternal"
+                    defaultValue={lead.contact_last_name_maternal || ""}
+                />
+                </div>
+                 <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium">Correo Electrónico</label>
+                    <Input name="contact_email" type="email" defaultValue={lead.contact_email || ""} placeholder="correo@ejemplo.com" />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium">Teléfono / WhatsApp</label>
+                    <Input name="contact_phone" defaultValue={lead.contact_phone || ""} placeholder="52..." />
+                </div>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Teléfono de contacto</label>
-            <Input name="contact_phone" defaultValue={lead.contact_phone || ""} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Grado de interés</label>
-              <Input name="grade_interest" defaultValue={lead.grade_interest || ""} required />
+          {/* Admissions Info */}
+          <div className="space-y-4">
+             <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Admisiones e Interés</h3>
+                <Separator className="flex-1" />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Escuela actual</label>
-              <Input name="current_school" defaultValue={lead.current_school || ""} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Ciclo escolar</label>
-              <Input name="school_year" defaultValue={lead.school_year || ""} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Admisión - Ciclo</label>
-              <Select
-                value={cycleValue}
-                onValueChange={(val) => {
-                  setCycleValue(val)
-                  setCycleId(val === "none" ? null : val)
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona ciclo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin ciclo</SelectItem>
-                  {cycles.map((cycle) => (
-                    <SelectItem key={cycle.id} value={cycle.id}>
-                      {cycle.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Estado</label>
-              <Select value={statusValue} onValueChange={setStatusValue}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {leadStatuses.map((status) => (
-                    <SelectItem key={status} value={status} className="capitalize">
-                      {status.replace(/_/g, " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Grado de interés</label>
+                <Input name="grade_interest" defaultValue={lead.grade_interest || ""} required />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Escuela anterior / actual</label>
+                <Input name="current_school" defaultValue={lead.current_school || ""} />
+                </div>
+                 <div className="space-y-2">
+                <label className="text-sm font-medium">Ciclo escolar (texto)</label>
+                <Input name="school_year" defaultValue={lead.school_year || ""} />
+                </div>
+                <div className="space-y-2">
+                <label className="text-sm font-medium">Ciclo de Admisión</label>
+                <Select
+                    value={cycleValue}
+                    onValueChange={(val) => {
+                    setCycleValue(val)
+                    setCycleId(val === "none" ? null : val)
+                    }}
+                >
+                    <SelectTrigger>
+                    <SelectValue placeholder="Selecciona ciclo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="none">Sin ciclo</SelectItem>
+                    {cycles.map((cycle) => (
+                        <SelectItem key={cycle.id} value={cycle.id}>
+                        {cycle.name}
+                        </SelectItem>
+                    ))}
+                    </SelectContent>
+                </Select>
+                </div>
+                 <div className="space-y-2 sm:col-span-2">
+                <label className="text-sm font-medium">Estado del Lead</label>
+                <Select value={statusValue} onValueChange={setStatusValue}>
+                    <SelectTrigger>
+                    <SelectValue placeholder="Selecciona estado" />
+                    </SelectTrigger>
+                    <SelectContent>
+                    {leadStatuses.map((status) => (
+                        <SelectItem key={status} value={status} className="capitalize">
+                        {statusLabel(status)}
+                        </SelectItem>
+                    ))}
+                    </SelectContent>
+                </Select>
+                </div>
             </div>
           </div>
 
           {state.error ? (
-            <p className="text-sm text-destructive">{state.error}</p>
+            <p className="text-sm text-destructive font-medium bg-destructive/10 p-3 rounded-md">{state.error}</p>
           ) : null}
           {state.success ? (
-            <p className="text-sm text-emerald-600">{state.success}</p>
+            <p className="text-sm text-emerald-600 font-medium bg-emerald-50 p-3 rounded-md">{state.success}</p>
           ) : null}
 
-          <Button type="submit" disabled={pending} className="w-full">
-            {pending ? "Guardando..." : "Guardar cambios"}
-          </Button>
+          <div className="sticky bottom-0 pt-4 bg-background mt-2">
+             <Button type="submit" disabled={pending} className="w-full h-11 text-base">
+                {pending ? "Guardando cambios..." : "Guardar cambios"}
+            </Button>
+          </div>
         </form>
       </SheetContent>
     </Sheet>

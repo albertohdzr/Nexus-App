@@ -3,6 +3,7 @@ import { AuthProvider } from "@/src/components/providers/auth-provider"
 import { redirect } from "next/navigation"
 import { Sidebar } from "@/src/components/layout/sidebar"
 import { TopNav } from "@/src/components/layout/top-nav"
+import { SidebarProvider, SidebarInset } from "@/src/components/ui/sidebar"
 
 export default async function DashboardLayout({
     children,
@@ -26,7 +27,8 @@ export default async function DashboardLayout({
             role,
             organization:organizations (
                 name,
-                logo_url
+                logo_url,
+                slug
             )
         `)
         .eq("id", user.id)
@@ -37,18 +39,22 @@ export default async function DashboardLayout({
     const orgName = profile?.organization?.name || "Nexus"
     // @ts-expect-error Supabase join typing for organization is not generated
     const orgLogo = profile?.organization?.logo_url || null
+    // @ts-expect-error Supabase join typing for organization is not generated
+    const orgSlug = profile?.organization?.slug || "NEXUS"
+
+
 
     return (
         <AuthProvider initialUser={user} initialRole={role}>
-            <div className="flex h-screen w-full overflow-hidden bg-background">
-                <Sidebar />
-                <div className="flex-1 flex flex-col overflow-hidden">
+            <SidebarProvider>
+                <Sidebar organizationSlug={orgSlug} />
+                <SidebarInset>
                     <TopNav organizationName={orgName} organizationLogo={orgLogo} />
-                    <main className="flex-1 overflow-y-auto p-6">
+                    <div className="flex flex-1 flex-col gap-6 p-6">
                         {children}
-                    </main>
-                </div>
-            </div>
+                    </div>
+                </SidebarInset>
+            </SidebarProvider>
         </AuthProvider>
     )
 }
