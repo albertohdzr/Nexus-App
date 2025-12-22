@@ -11,6 +11,7 @@ import {
     PieChart,
     Building2,
     Shield,
+    Mail,
 } from "lucide-react"
 import { ModuleConfig, NavItem, UserRole } from "@/src/types/navigation"
 
@@ -33,6 +34,7 @@ export const navigationModules: ModuleConfig[] = [
             { title: 'Citas', href: '/crm/appointments', icon: Calendar },
             { title: 'Activities', href: '/crm/activities', icon: Calendar },
             { title: 'Chatbot', href: '/crm/chat', icon: MessageSquare },
+            { title: 'Plantillas', href: '/crm/templates', icon: Mail },
             { title: 'Analytics', href: '/crm/analytics', icon: PieChart },
         ]
     },

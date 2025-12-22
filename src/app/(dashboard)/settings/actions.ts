@@ -169,3 +169,51 @@ export async function deleteOrganizationKnowledge(formData: FormData) {
   revalidatePath("/settings");
   return { success: true };
 }
+
+export async function upsertEmailTemplateBase(formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "Unauthorized" };
+  }
+
+  const organization_id = formData.get("organization_id") as string;
+  const logo_url = (formData.get("logo_url") as string) || null;
+  const header_html = (formData.get("header_html") as string) || null;
+  const footer_html = (formData.get("footer_html") as string) || null;
+
+  if (!organization_id) {
+    return { error: "Organization ID is required" };
+  }
+
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("organization_id, role")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || profile.organization_id !== organization_id) {
+    return { error: "You do not have permission to edit this organization" };
+  }
+
+  if (profile.role !== "superadmin" && profile.role !== "org_admin") {
+    return { error: "Insufficient permissions" };
+  }
+
+  const { error } = await supabase.from("email_template_bases").upsert({
+    organization_id,
+    logo_url,
+    header_html,
+    footer_html,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "organization_id" });
+
+  if (error) {
+    console.error("Error saving email template base:", error);
+    return { error: "Failed to save email template base" };
+  }
+
+  revalidatePath("/settings");
+  return { success: true };
+}

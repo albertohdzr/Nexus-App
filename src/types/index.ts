@@ -5,3 +5,4 @@ export * from "./organization";
 export * from "./whatsapp";
 export * from "./lead";
 export * from "./admission";
+export * from "./email-template";

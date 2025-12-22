@@ -10,8 +10,10 @@ import { Label } from "@/src/components/ui/label";
 import { Input } from "@/src/components/ui/input";
 import { Button } from "@/src/components/ui/button";
 import { Organization } from "@/src/types/organization";
-import { updateOrganization, createOrganizationKnowledge, deleteOrganizationKnowledge } from "./actions";
+import { updateOrganization, createOrganizationKnowledge, deleteOrganizationKnowledge, upsertEmailTemplateBase } from "./actions";
 import Link from "next/link";
+import { HtmlEditor } from "@/src/components/crm/html-editor";
+import type { EmailTemplateBase } from "@/src/types/email-template";
 
 export default function SettingsPage() {
     const [org, setOrg] = useState<Organization | null>(null);
@@ -20,11 +22,13 @@ export default function SettingsPage() {
     const [isSavingKnowledge, startSavingKnowledge] = useTransition();
     const [isDeleting, startDeleting] = useTransition();
     const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
+    const [templateBase, setTemplateBase] = useState<EmailTemplateBase | null>(null);
     const [newKnowledge, setNewKnowledge] = useState({
         title: "",
         category: "",
         content: "",
     });
+    const [isSavingBase, startSavingBase] = useTransition();
     const supabase = createClient();
 
     useEffect(() => {
@@ -49,6 +53,20 @@ export default function SettingsPage() {
                     setOrg(orgData);
                 }
 
+                const { data: baseData } = await supabase
+                    .from("email_template_bases")
+                    .select("*")
+                    .eq("organization_id", profile.organization_id)
+                    .maybeSingle();
+
+                setTemplateBase({
+                    id: baseData?.id || "",
+                    organization_id: profile.organization_id,
+                    logo_url: baseData?.logo_url || "",
+                    header_html: baseData?.header_html || "<h2 style=\"margin:0\">Nexus Admissions</h2>",
+                    footer_html: baseData?.footer_html || "<p style=\"margin:0\">Contacto: admissions@nexus.edu | Campus Norte</p>",
+                });
+
                 const { data: knowledgeData } = await supabase
                     .from("organization_knowledge")
                     .select("*")
@@ -72,6 +90,24 @@ export default function SettingsPage() {
                 toast.error(result.error);
             } else {
                 toast.success("Organization settings updated");
+            }
+        });
+    };
+
+    const handleSaveTemplateBase = async (e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        if (!org || !templateBase) return;
+        const formData = new FormData();
+        formData.append("organization_id", org.id);
+        formData.append("logo_url", templateBase.logo_url || "");
+        formData.append("header_html", templateBase.header_html || "");
+        formData.append("footer_html", templateBase.footer_html || "");
+        startSavingBase(async () => {
+            const result = await upsertEmailTemplateBase(formData);
+            if (result.error) {
+                toast.error(result.error);
+            } else {
+                toast.success("Base de correo actualizada");
             }
         });
     };
@@ -206,6 +242,55 @@ export default function SettingsPage() {
                         </Button>
                     </CardFooter>
                 </form>
+            </Card>
+
+            <Card className="mb-8">
+                <CardHeader>
+                    <CardTitle>Base de templates de correo</CardTitle>
+                    <CardDescription>Configura logo, encabezado y footer para todas las comunicaciones.</CardDescription>
+                </CardHeader>
+                {templateBase ? (
+                    <CardContent>
+                        <form className="space-y-4" onSubmit={handleSaveTemplateBase}>
+                            <div className="space-y-2">
+                                <Label htmlFor="logo_url">Logo (URL)</Label>
+                                <Input
+                                    id="logo_url"
+                                    value={templateBase.logo_url || ""}
+                                    onChange={(e) => setTemplateBase((prev) => prev ? { ...prev, logo_url: e.target.value } : prev)}
+                                    placeholder="https://cdn.tu-colegio.com/logo.png"
+                                />
+                                <p className="text-xs text-muted-foreground">Se utiliza en el encabezado y en la vista previa.</p>
+                            </div>
+                            <HtmlEditor
+                                id="header_html"
+                                label="Encabezado HTML"
+                                description="Incluye logo, titulo o un CTA corto."
+                                value={templateBase.header_html || ""}
+                                onChange={(value) => setTemplateBase((prev) => prev ? { ...prev, header_html: value } : prev)}
+                                minHeight="140px"
+                            />
+                            <HtmlEditor
+                                id="footer_html"
+                                label="Footer HTML"
+                                description="Datos de contacto, campus, horarios o redes."
+                                value={templateBase.footer_html || ""}
+                                onChange={(value) => setTemplateBase((prev) => prev ? { ...prev, footer_html: value } : prev)}
+                                minHeight="140px"
+                            />
+                            <CardFooter className="px-0 pt-2">
+                                <Button type="submit" disabled={isSavingBase}>
+                                    {isSavingBase && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Guardar base
+                                </Button>
+                            </CardFooter>
+                        </form>
+                    </CardContent>
+                ) : (
+                    <CardContent>
+                        <div className="text-sm text-muted-foreground">Cargando base...</div>
+                    </CardContent>
+                )}
             </Card>
 
             <Card>
