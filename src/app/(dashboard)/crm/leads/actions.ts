@@ -34,6 +34,17 @@ export type UpdateLeadAction = (
   formData: FormData
 ) => Promise<UpdateLeadActionState>
 
+export type CreateLeadActionState = {
+  success?: string
+  error?: string
+  leadId?: string
+}
+
+export type CreateLeadAction = (
+  prevState: CreateLeadActionState,
+  formData: FormData
+) => Promise<CreateLeadActionState>
+
 const resend = new Resend(process.env.RESEND_API_KEY)
 const fromEmail =
   process.env.RESEND_FROM_EMAIL || "Nexus CRM <onboarding@team5526.com>"
@@ -304,7 +315,8 @@ export const updateLeadBasic: UpdateLeadAction = async (
     const contactMiddle = (formData.get("contact_middle_name") as string | null) ?? null
     const contactLast = (formData.get("contact_last_name_paternal") as string | null) ?? ""
     const contactLastMaternal = (formData.get("contact_last_name_maternal") as string | null) ?? null
-    const contactEmail = (formData.get("contact_email") as string | null) ?? null
+    const contactEmailRaw = (formData.get("contact_email") as string | null) ?? ""
+    const contactEmail = contactEmailRaw.trim() || null
     const contactPhone = (formData.get("contact_phone") as string | null) ?? null
 
     if (!leadId) {
@@ -389,5 +401,119 @@ export const updateLeadBasic: UpdateLeadAction = async (
   } catch (error) {
     console.error("updateLeadBasic error", error)
     return { error: "No se pudo actualizar el lead." }
+  }
+}
+
+export const createLeadManual: CreateLeadAction = async (
+  _prevState,
+  formData
+) => {
+  try {
+    const studentFirst = (formData.get("student_first_name") as string | null) ?? ""
+    const studentMiddle = (formData.get("student_middle_name") as string | null) ?? null
+    const studentLastPaternal = (formData.get("student_last_name_paternal") as string | null) ?? ""
+    const studentLastMaternal = (formData.get("student_last_name_maternal") as string | null) ?? null
+    const grade = (formData.get("grade_interest") as string | null) ?? ""
+    const schoolYear = (formData.get("school_year") as string | null) ?? null
+    const currentSchool = (formData.get("current_school") as string | null) ?? null
+
+    const contactFirst = (formData.get("contact_first_name") as string | null) ?? ""
+    const contactMiddle = (formData.get("contact_middle_name") as string | null) ?? null
+    const contactLastPaternal = (formData.get("contact_last_name_paternal") as string | null) ?? ""
+    const contactLastMaternal = (formData.get("contact_last_name_maternal") as string | null) ?? null
+    const contactEmail = (formData.get("contact_email") as string | null) ?? null
+    const contactPhone = (formData.get("contact_phone") as string | null) ?? ""
+
+    if (!studentFirst.trim() || !studentLastPaternal.trim()) {
+      return { error: "Nombre y apellido del estudiante son obligatorios." }
+    }
+    if (!contactFirst.trim() || !contactLastPaternal.trim()) {
+      return { error: "Nombre y apellido del contacto son obligatorios." }
+    }
+    if (!grade.trim()) {
+      return { error: "El grado de interés es obligatorio." }
+    }
+    if (!contactPhone.trim()) {
+      return { error: "El teléfono de contacto es obligatorio." }
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Inicia sesión para crear leads." }
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("organization_id, role")
+      .eq("id", user.id)
+      .single()
+
+    if (profileError || !profile?.organization_id) {
+      console.error("Error loading user profile", profileError)
+      return { error: "No se pudo validar tu perfil de usuario." }
+    }
+
+    const { data: contact, error: contactError } = await supabase
+      .from("crm_contacts")
+      .insert({
+        organization_id: profile.organization_id,
+        first_name: contactFirst,
+        middle_name: contactMiddle,
+        last_name_paternal: contactLastPaternal,
+        last_name_maternal: contactLastMaternal,
+        phone: contactPhone,
+        email: contactEmail,
+        source: "manual",
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single()
+
+    if (contactError || !contact) {
+      console.error("Error creating contact", contactError)
+      return { error: "No se pudo crear el contacto del lead." }
+    }
+
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .insert({
+        organization_id: profile.organization_id,
+        status: "new",
+        source: "manual",
+        student_first_name: studentFirst,
+        student_middle_name: studentMiddle,
+        student_last_name_paternal: studentLastPaternal,
+        student_last_name_maternal: studentLastMaternal,
+        grade_interest: grade,
+        school_year: schoolYear,
+        current_school: currentSchool,
+        contact_first_name: contactFirst,
+        contact_middle_name: contactMiddle,
+        contact_last_name_paternal: contactLastPaternal,
+        contact_last_name_maternal: contactLastMaternal,
+        contact_email: contactEmail,
+        contact_phone: contactPhone,
+        contact_id: contact.id,
+        contact_name: [contactFirst, contactLastPaternal]
+          .filter(Boolean)
+          .join(" "),
+      })
+      .select("id")
+      .single()
+
+    if (leadError || !lead) {
+      console.error("Error creating lead", leadError)
+      return { error: "No se pudo crear el lead." }
+    }
+
+    revalidatePath("/crm/leads")
+    return { success: "Lead creado.", leadId: lead.id }
+  } catch (error) {
+    console.error("createLeadManual error", error)
+    return { error: "No se pudo crear el lead." }
   }
 }

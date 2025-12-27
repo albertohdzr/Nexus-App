@@ -1,12 +1,14 @@
 "use client"
 
-import { useActionState, useMemo, useState } from "react"
+import { useActionState, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Clock3, Mail, MessageSquare, Phone, Search, MoreHorizontal, Eye, ExternalLink } from "lucide-react"
+import { Mail, MessageSquare, Phone, Search, MoreHorizontal, Eye, ExternalLink, Plus } from "lucide-react"
+import { toast } from "sonner"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
+import { Label } from "@/src/components/ui/label"
 import { Separator } from "@/src/components/ui/separator"
 import {
   Sheet,
@@ -42,7 +44,12 @@ import {
   getSessions,
   statusLabel,
 } from "@/src/lib/lead"
-import type { FollowUpActionState, SendLeadFollowUpAction } from "@/src/app/(dashboard)/crm/leads/actions"
+import type {
+  CreateLeadActionState,
+  FollowUpActionState,
+  SendLeadFollowUpAction,
+} from "@/src/app/(dashboard)/crm/leads/actions"
+import { createLeadManual } from "@/src/app/(dashboard)/crm/leads/actions"
 import type { LeadRecord } from "@/src/types/lead"
 
 type LeadsTableProps = {
@@ -52,6 +59,7 @@ type LeadsTableProps = {
 
 export function LeadsTable({ leads, sendFollowUpAction }: LeadsTableProps) {
   const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [search, setSearch] = useState("")
   const router = useRouter()
 
@@ -84,14 +92,20 @@ export function LeadsTable({ leads, sendFollowUpAction }: LeadsTableProps) {
             Gestiona tus prospectos y visualiza su actividad reciente.
           </p>
         </div>
-        <div className="relative w-full sm:w-[300px]">
-           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Buscar leads..."
-            className="pl-8"
-          />
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <div className="relative w-full sm:w-[300px]">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar leads..."
+              className="pl-8"
+            />
+          </div>
+          <Button size="sm" onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Nuevo lead
+          </Button>
         </div>
       </div>
 
@@ -241,6 +255,12 @@ export function LeadsTable({ leads, sendFollowUpAction }: LeadsTableProps) {
         onClose={() => setSelectedLead(null)}
         sendFollowUpAction={sendFollowUpAction}
       />
+
+      <CreateLeadSheet
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        onCreated={(leadId) => router.push(`/crm/leads/${leadId}`)}
+      />
     </div>
   )
 }
@@ -386,6 +406,130 @@ function LeadDetailsSheet({
             />
           </section>
         </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+type CreateLeadSheetProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreated: (leadId: string) => void
+}
+
+function CreateLeadSheet({ open, onOpenChange, onCreated }: CreateLeadSheetProps) {
+  const router = useRouter()
+  const [state, formAction, pending] = useActionState<
+    CreateLeadActionState,
+    FormData
+  >(createLeadManual, {})
+
+  useEffect(() => {
+    if (state.error) {
+      toast.error(state.error)
+    }
+    if (state.success && state.leadId) {
+      toast.success(state.success)
+      onOpenChange(false)
+      router.refresh()
+      onCreated(state.leadId)
+    }
+  }, [state, onCreated, onOpenChange, router])
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="sm:max-w-xl overflow-y-auto">
+        <SheetHeader className="space-y-2">
+          <SheetTitle>Nuevo lead</SheetTitle>
+          <SheetDescription>
+            Captura los datos principales para crear un lead manualmente.
+          </SheetDescription>
+        </SheetHeader>
+
+        <form action={formAction} className="py-4 space-y-6">
+          <section className="space-y-3">
+            <h4 className="text-sm font-semibold">Estudiante</h4>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="student_first_name">Nombre</Label>
+                <Input id="student_first_name" name="student_first_name" required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="student_middle_name">Segundo nombre</Label>
+                <Input id="student_middle_name" name="student_middle_name" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="student_last_name_paternal">Apellido paterno</Label>
+                <Input
+                  id="student_last_name_paternal"
+                  name="student_last_name_paternal"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="student_last_name_maternal">Apellido materno</Label>
+                <Input id="student_last_name_maternal" name="student_last_name_maternal" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="grade_interest">Grado de interés</Label>
+                <Input id="grade_interest" name="grade_interest" required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="school_year">Ciclo escolar</Label>
+                <Input id="school_year" name="school_year" placeholder="2025-2026" />
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <Label htmlFor="current_school">Escuela actual</Label>
+                <Input id="current_school" name="current_school" />
+              </div>
+            </div>
+          </section>
+
+          <Separator />
+
+          <section className="space-y-3">
+            <h4 className="text-sm font-semibold">Contacto</h4>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="contact_first_name">Nombre</Label>
+                <Input id="contact_first_name" name="contact_first_name" required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="contact_middle_name">Segundo nombre</Label>
+                <Input id="contact_middle_name" name="contact_middle_name" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="contact_last_name_paternal">Apellido paterno</Label>
+                <Input
+                  id="contact_last_name_paternal"
+                  name="contact_last_name_paternal"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="contact_last_name_maternal">Apellido materno</Label>
+                <Input id="contact_last_name_maternal" name="contact_last_name_maternal" />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="contact_phone">Teléfono</Label>
+                <Input id="contact_phone" name="contact_phone" required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="contact_email">Email</Label>
+                <Input id="contact_email" name="contact_email" type="email" />
+              </div>
+            </div>
+          </section>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={pending}>
+              Guardar lead
+            </Button>
+          </div>
+        </form>
       </SheetContent>
     </Sheet>
   )
