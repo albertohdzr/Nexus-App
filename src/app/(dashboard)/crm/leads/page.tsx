@@ -94,7 +94,7 @@ export default async function LeadsPage() {
   })
 
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="space-y-6">
       <LeadsTable leads={leadRows} sendFollowUpAction={sendLeadFollowUp} />
     </div>
   )

@@ -25,44 +25,42 @@ export function GenerateSlotsForm({ defaultStart, defaultEnd }: Props) {
   const [state, formAction] = useActionState(generateSlots, DEFAULT_STATE)
 
   return (
-    <Card>
+    <Card className="h-full border-muted">
       <CardHeader>
-        <div className="flex flex-col gap-1">
-          <CardTitle>Generar disponibilidad</CardTitle>
-          <CardDescription>
-            Crea los espacios en agenda para el rango de fechas seleccionado.
-          </CardDescription>
-        </div>
+        <CardTitle>Generate Availability</CardTitle>
+        <CardDescription>
+          Create slots for the specified date range.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <form action={formAction} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="start_date">Fecha inicio</Label>
+              <Label htmlFor="start_date">Start Date</Label>
               <Input id="start_date" name="start_date" type="date" defaultValue={defaultStart} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end_date">Fecha fin</Label>
+              <Label htmlFor="end_date">End Date</Label>
               <Input id="end_date" name="end_date" type="date" defaultValue={defaultEnd} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="campus">Campus (opcional)</Label>
-            <Input id="campus" name="campus" placeholder="Principal / Norte / ..." />
+            <Label htmlFor="campus">Campus (Optional)</Label>
+            <Input id="campus" name="campus" placeholder="e.g. Main Campus / Online" />
           </div>
 
-          {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+          {state.error && <p className="text-sm text-destructive font-medium">{state.error}</p>}
           {state.success && (
-            <p className="text-sm text-green-600">
+            <p className="text-sm text-emerald-600 font-medium">
               {state.success}
-              {state.inserted ? ` (${state.inserted} slots)` : ""}
+              {state.inserted ? ` (${state.inserted} slots created)` : ""}
             </p>
           )}
 
-          <CardFooter className="px-0">
+          <CardFooter className="px-0 pt-2">
             <Button type="submit" className="w-full">
-              Generar slots
+              Generate Slots
             </Button>
           </CardFooter>
         </form>

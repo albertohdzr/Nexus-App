@@ -1,49 +1,30 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src/components/ui/card"
+"use client"
+
+import { DashboardHeader } from "@/src/components/dashboard/header"
+import { StatsCards } from "@/src/components/dashboard/stats-cards"
+import { LeadsChart } from "@/src/components/dashboard/leads-chart"
+import { TopPerformers } from "@/src/components/dashboard/top-performers"
+import { LeadsTable } from "@/src/components/dashboard/leads-table"
 import { navigationModules } from "@/src/config/navigation"
 import Link from "next/link"
 import { ArrowUpRight } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/src/components/ui/card"
 
 export default function DashboardPage() {
-  const stats = [
-    { title: "Total Students", value: "2,543", change: "+12%", changeType: "positive" },
-    { title: "Active Applications", value: "127", change: "+23%", changeType: "positive" },
-    { title: "Revenue (MTD)", value: "$45,231", change: "+8%", changeType: "positive" },
-    { title: "Pending Tasks", value: "23", change: "-5%", changeType: "negative" },
-  ]
-
   return (
-    <div className="px-4 lg:px-6">
-      <div className="flex flex-col gap-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Welcome back! Here&apos;s what&apos;s happening with your school today.
-          </p>
-        </div>
+    <div className="space-y-6">
+      <StatsCards />
 
-        {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat) => (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  {stat.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className={`text-xs ${stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'}`}>
-                  {stat.change} from last month
-                </p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+      <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
+        <LeadsChart />
+        <TopPerformers />
+      </div>
 
-        {/* Quick Access Modules */}
-        <div>
+      <LeadsTable />
+
+      {/* Quick Access Modules (Preserved functionality) */}
+      <div className="mt-8 pt-8 border-t">
           <h2 className="text-xl font-semibold tracking-tight mb-4">Quick Access</h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {navigationModules.filter(m => m.key !== 'home').map((module) => {
@@ -87,7 +68,6 @@ export default function DashboardPage() {
               )
             })}
           </div>
-        </div>
       </div>
     </div>
   )

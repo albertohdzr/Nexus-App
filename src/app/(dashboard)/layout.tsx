@@ -2,7 +2,8 @@ import { createClient } from "@/src/lib/supabase/server"
 import { AuthProvider } from "@/src/components/providers/auth-provider"
 import { redirect } from "next/navigation"
 import { Sidebar } from "@/src/components/layout/sidebar"
-import { TopNav } from "@/src/components/layout/top-nav"
+import { DashboardHeader } from "@/src/components/dashboard/header"
+// import { TopNav } from "@/src/components/layout/top-nav"
 import { SidebarProvider, SidebarInset } from "@/src/components/ui/sidebar"
 
 export default async function DashboardLayout({
@@ -46,12 +47,17 @@ export default async function DashboardLayout({
 
     return (
         <AuthProvider initialUser={user} initialRole={role}>
-            <SidebarProvider>
-                <Sidebar organizationSlug={orgSlug} />
-                <SidebarInset>
-                    <TopNav organizationName={orgName} organizationLogo={orgLogo} />
-                    <div className="flex flex-1 flex-col gap-6 p-6">
-                        {children}
+            <SidebarProvider className="bg-sidebar">
+                <Sidebar organizationSlug={orgSlug} userRole={role} />
+                <SidebarInset className="bg-background">
+                     {/* We use a container similar to the template's page.tsx but adaptable for nested layouts */}
+                    <div className="h-svh overflow-hidden lg:p-2 w-full flex flex-col">
+                        <div className="flex-1 lg:rounded-md overflow-hidden flex flex-col bg-background relative shadow-sm">
+                            <DashboardHeader />
+                            <div className="flex-1 overflow-auto p-4 sm:p-6 w-full">
+                                {children}
+                            </div>
+                        </div>
                     </div>
                 </SidebarInset>
             </SidebarProvider>

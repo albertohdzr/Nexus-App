@@ -285,23 +285,22 @@ export default function EmailTemplatesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b pb-4">
         <div>
-          <h1 className="text-2xl font-semibold">Templates de correo</h1>
+          <h2 className="text-xl font-bold tracking-tight">Email Templates</h2>
           <p className="text-sm text-muted-foreground">
-            Configura plantillas, disparadores y reglas para envios automaticos o
-            manuales.
+            Configure templates, triggers, and rules for automated or manual communication.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleNewTemplate}>
-            <Plus className="h-4 w-4" />
-            Nuevo template
+            <Plus className="mr-2 h-4 w-4" />
+            New Template
           </Button>
           <Button size="sm" onClick={handleSave} disabled={isSaving}>
-            <Save className="h-4 w-4" />
-            Guardar
+            <Save className="mr-2 h-4 w-4" />
+            Save Changes
           </Button>
         </div>
       </div>

@@ -39,20 +39,18 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
   }, [settings.days_of_week])
 
   return (
-    <Card>
+    <Card className="h-full border-muted">
       <CardHeader>
-        <div className="flex flex-col gap-1">
-          <CardTitle>Configuración de citas</CardTitle>
-          <CardDescription>
-            Duración, horario y días activos para generar los espacios de visita.
-          </CardDescription>
-        </div>
+        <CardTitle>Configuration</CardTitle>
+        <CardDescription>
+          Set duration, timing, and active days for appointment slots.
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <form action={formAction} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="slot_duration_minutes">Duración (minutos)</Label>
+              <Label htmlFor="slot_duration_minutes">Duration (min)</Label>
               <Input
                 id="slot_duration_minutes"
                 name="slot_duration_minutes"
@@ -63,7 +61,7 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="buffer_minutes">Buffer entre citas (min)</Label>
+              <Label htmlFor="buffer_minutes">Buffer (min)</Label>
               <Input
                 id="buffer_minutes"
                 name="buffer_minutes"
@@ -74,7 +72,7 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="start_time">Hora inicio</Label>
+              <Label htmlFor="start_time">Start Time</Label>
               <Input
                 id="start_time"
                 name="start_time"
@@ -83,7 +81,7 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end_time">Hora fin</Label>
+              <Label htmlFor="end_time">End Time</Label>
               <Input
                 id="end_time"
                 name="end_time"
@@ -94,23 +92,23 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
           </div>
 
           <div className="space-y-2">
-            <Label>Días activos</Label>
+            <Label>Active Days</Label>
             <ToggleGroup
               type="multiple"
               value={days}
               onValueChange={(value) => setDays(value)}
-              className="flex flex-wrap gap-2"
+              className="flex flex-wrap gap-2 justify-start"
             >
               {[
-                { value: "1", label: "L" },
-                { value: "2", label: "M" },
-                { value: "3", label: "X" },
-                { value: "4", label: "J" },
-                { value: "5", label: "V" },
+                { value: "1", label: "M" },
+                { value: "2", label: "T" },
+                { value: "3", label: "W" },
+                { value: "4", label: "T" },
+                { value: "5", label: "F" },
                 { value: "6", label: "S" },
-                { value: "0", label: "D" },
+                { value: "0", label: "S" },
               ].map((day) => (
-                <ToggleGroupItem key={day.value} value={day.value} className="w-10">
+                <ToggleGroupItem key={day.value} value={day.value} className="size-9 rounded-md border border-input data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
                   {day.label}
                 </ToggleGroupItem>
               ))}
@@ -120,17 +118,17 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pt-2">
             <Checkbox
               id="allow_overbooking"
               name="allow_overbooking"
               defaultChecked={Boolean(settings.allow_overbooking)}
             />
-            <Label htmlFor="allow_overbooking">Permitir overbooking manual</Label>
+            <Label htmlFor="allow_overbooking" className="text-sm font-normal">Allow manual overbooking</Label>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="timezone">Zona horaria</Label>
+            <Label htmlFor="timezone">Timezone</Label>
             <Input
               id="timezone"
               name="timezone"
@@ -140,12 +138,12 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
             />
           </div>
 
-          {state.error && <p className="text-sm text-destructive">{state.error}</p>}
-          {state.success && <p className="text-sm text-green-600">{state.success}</p>}
+          {state.error && <p className="text-sm text-destructive font-medium">{state.error}</p>}
+          {state.success && <p className="text-sm text-emerald-600 font-medium">{state.success}</p>}
 
-          <CardFooter className="px-0">
+          <CardFooter className="px-0 pt-2">
             <Button type="submit" className="w-full">
-              Guardar configuración
+              Save Configuration
             </Button>
           </CardFooter>
         </form>

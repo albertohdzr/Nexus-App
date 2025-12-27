@@ -71,7 +71,14 @@ export default async function AppointmentsPage() {
   ])
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="space-y-6">
+      <div className="border-b pb-4">
+        <h2 className="text-xl font-bold tracking-tight">Appointments & Settings</h2>
+        <p className="text-sm text-muted-foreground">
+          Manage your availability, configure settings, and view the calendar.
+        </p>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <AppointmentSettingsForm settings={settings || DEFAULT_SETTINGS} />
         <GenerateSlotsForm defaultStart={startDateStr} defaultEnd={endDateStr} />
