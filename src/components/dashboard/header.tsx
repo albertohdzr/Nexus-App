@@ -24,15 +24,59 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function DashboardHeader() {
+  const pathname = usePathname();
+
+  // Helper to determine title from path
+  const getPageTitle = (path: string) => {
+    if (path === '/' || path === '/home') return 'Dashboard';
+
+    const segments = path.split('/').filter(Boolean);
+    if (segments.length === 0) return 'Dashboard';
+
+    const lastSegment = segments[segments.length - 1];
+    
+    // Check if last segment is an ID (e.g. UUID or long string), if so take the one before
+    const isId = lastSegment.length > 20 || !isNaN(Number(lastSegment));
+    let titleSegment = isId && segments.length > 1 ? segments[segments.length - 2] : lastSegment;
+
+    // Handle standard "home" segment
+    if (titleSegment === 'home') return 'Dashboard';
+
+    // Special formatting map
+    const specialTitles: Record<string, string> = {
+        crm: 'CRM',
+        chat: 'Chat',
+        admissions: 'Admissions',
+        finance: 'Finance',
+        settings: 'Settings',
+        bot: 'Bot',
+        directory: 'Directory'
+    };
+
+    if (specialTitles[titleSegment.toLowerCase()]) {
+        return specialTitles[titleSegment.toLowerCase()];
+    }
+
+    // Default formatting: Capitalize and replace hyphens
+    return titleSegment
+        .replace(/[-_]/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+  };
+
+  const title = getPageTitle(pathname);
+
   return (
     <header className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3 border-b bg-card sticky top-0 z-10 w-full">
       <div className="flex items-center gap-3">
         <SidebarTrigger className="-ml-2" />
         <div className="hidden sm:flex items-center gap-2 text-muted-foreground">
-          <BarChart3 className="size-4" />
-          <span className="text-sm font-medium">Dashboard</span>
+          {/* <BarChart3 className="size-4" /> */}
+          <span className="text-sm font-medium">{title}</span>
         </div>
       </div>
 
@@ -121,36 +165,7 @@ export function DashboardHeader() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 hidden sm:flex"
-            >
-              <Share2 className="size-3.5" />
-              <span className="text-sm">Share</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem>Copy link</DropdownMenuItem>
-            <DropdownMenuItem>Export as PDF</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Share with team</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         <ThemeToggle />
-
-        <Button variant="ghost" size="icon" asChild className="hidden sm:flex">
-          <Link
-            href="https://github.com/ln-dev7/square-ui/tree/master/templates/dashboard-4"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Github className="size-5" />
-          </Link>
-        </Button>
       </div>
     </header>
   );

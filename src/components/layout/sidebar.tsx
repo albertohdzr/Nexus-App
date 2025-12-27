@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { UserNav } from "@/src/components/layout/user-nav"
 import {
     Sidebar as SidebarPrimitive,
     SidebarContent,
@@ -257,14 +258,7 @@ export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) 
             </SidebarContent>
 
             <SidebarFooter className="px-2.5 pb-3 group-data-[collapsible=icon]:hidden">
-                 <div className="bg-sidebar-accent/40 rounded-lg p-3 text-xs border border-sidebar-border/50">
-                    <div className="font-semibold mb-1">Nexus Platform</div>
-                    <p className="text-muted-foreground text-[10px] mb-2">
-                        Managed by Nexus Inc.
-                        <br />
-                        v2.0.0
-                    </p>
-                </div>
+                 <UserNav showDetails />
             </SidebarFooter>
             <SidebarRail />
         </SidebarPrimitive>

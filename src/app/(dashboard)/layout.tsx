@@ -52,7 +52,7 @@ export default async function DashboardLayout({
                 <SidebarInset className="bg-background">
                      {/* We use a container similar to the template's page.tsx but adaptable for nested layouts */}
                     <div className="h-svh overflow-hidden lg:p-2 w-full flex flex-col">
-                        <div className="flex-1 lg:rounded-md overflow-hidden flex flex-col bg-background relative shadow-sm">
+                        <div className="flex-1 lg:rounded-md overflow-hidden flex flex-col bg-card relative shadow-sm">
                             <DashboardHeader />
                             <div className="flex-1 overflow-auto p-4 sm:p-6 w-full">
                                 {children}
