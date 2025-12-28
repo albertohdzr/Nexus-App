@@ -189,6 +189,23 @@ export async function POST(request: Request) {
 
   const nowIso = new Date().toISOString();
 
+  const logAiEvent = async (
+    eventType: string,
+    payload: Record<string, unknown>,
+  ) => {
+    try {
+      await supabase.from("ai_logs").insert({
+        organization_id: organization.id,
+        chat_id: chat.id,
+        conversation_id: session?.conversation_id ?? null,
+        event_type: eventType,
+        payload,
+      });
+    } catch (error) {
+      console.error("Error inserting AI log", error);
+    }
+  };
+
   if (!session || !ACTIVE_STATUSES.has(session.status || "")) {
     const conversation = await openAIService.createConversation({
       organizationId: organization.id,
@@ -328,6 +345,9 @@ export async function POST(request: Request) {
       leadStatus: leadStatus ?? null,
       leadProfile,
       appointmentsEnabled: Boolean(appointmentSettings),
+    },
+    logger: async (event) => {
+      await logAiEvent(event.eventType, event.payload);
     },
   });
 
@@ -506,22 +526,39 @@ export async function POST(request: Request) {
 
       const args = parseToolArguments(call.arguments);
 
+      await logAiEvent("tool_call", {
+        name: call.name ?? null,
+        call_id: callId,
+        args,
+      });
+
       if (call.name === "request_handoff") {
         handoffRequested = true;
         toolOutputs.push({
           tool_call_id: callId,
           output: JSON.stringify({ status: "ok" }),
         });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: { status: "ok" },
+        });
         continue;
       }
 
       if (call.name === "create_lead") {
         const result = await ensureLeadForArgs(args);
+        const outputPayload = {
+          status: result.leadId ? "created" : "failed",
+        };
         toolOutputs.push({
           tool_call_id: callId,
-          output: JSON.stringify({
-            status: result.leadId ? "created" : "failed",
-          }),
+          output: JSON.stringify(outputPayload),
+        });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: outputPayload,
         });
         continue;
       }
@@ -547,6 +584,11 @@ export async function POST(request: Request) {
               error: "invalid_division",
             }),
           });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed", error: "invalid_division" },
+          });
           continue;
         }
 
@@ -569,6 +611,11 @@ export async function POST(request: Request) {
             tool_call_id: callId,
             output: JSON.stringify({ status: "not_found" }),
           });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "not_found" },
+          });
           continue;
         }
 
@@ -586,6 +633,11 @@ export async function POST(request: Request) {
           toolOutputs.push({
             tool_call_id: callId,
             output: JSON.stringify({ status: "failed" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed" },
           });
           continue;
         }
@@ -609,6 +661,11 @@ export async function POST(request: Request) {
             tool_call_id: callId,
             output: JSON.stringify({ status: "failed" }),
           });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed" },
+          });
           continue;
         }
 
@@ -626,6 +683,11 @@ export async function POST(request: Request) {
           toolOutputs.push({
             tool_call_id: callId,
             output: JSON.stringify({ status: "failed" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed" },
           });
           continue;
         }
@@ -663,6 +725,11 @@ export async function POST(request: Request) {
             status: "sent",
             division: normalizedDivision,
           }),
+        });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: { status: "sent", division: normalizedDivision },
         });
         continue;
       }
@@ -703,6 +770,11 @@ export async function POST(request: Request) {
               error: "invalid_date_range",
             }),
           });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed", error: "invalid_date_range" },
+          });
           continue;
         }
 
@@ -727,6 +799,11 @@ export async function POST(request: Request) {
           toolOutputs.push({
             tool_call_id: callId,
             output: JSON.stringify({ status: "failed" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed" },
           });
           continue;
         }
@@ -758,6 +835,14 @@ export async function POST(request: Request) {
             slots: outputSlots,
           }),
         });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: {
+            status: outputSlots.length ? "ok" : "empty",
+            slots: outputSlots,
+          },
+        });
         continue;
       }
 
@@ -782,15 +867,20 @@ export async function POST(request: Request) {
             !studentLastNamePaternal ||
             !gradeInterest
           ) {
-            toolOutputs.push({
-              tool_call_id: callId,
-              output: JSON.stringify({
-                status: "failed",
-                error: "missing_lead_fields",
-              }),
-            });
-            continue;
-          }
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({
+              status: "failed",
+              error: "missing_lead_fields",
+            }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed", error: "missing_lead_fields" },
+          });
+          continue;
+        }
 
           const leadResult = await ensureLeadForArgs({
             ...args,
@@ -808,6 +898,11 @@ export async function POST(request: Request) {
                 error: "missing_lead_fields",
               }),
             });
+            await logAiEvent("tool_output", {
+              name: call.name ?? null,
+              call_id: callId,
+              output: { status: "failed", error: "missing_lead_fields" },
+            });
             continue;
           }
         }
@@ -820,6 +915,11 @@ export async function POST(request: Request) {
               status: "failed",
               error: "invalid_datetime",
             }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed", error: "invalid_datetime" },
           });
           continue;
         }
@@ -853,6 +953,11 @@ export async function POST(request: Request) {
               error: "slot_unavailable",
             }),
           });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "unavailable", error: "slot_unavailable" },
+          });
           continue;
         }
 
@@ -879,6 +984,11 @@ export async function POST(request: Request) {
           toolOutputs.push({
             tool_call_id: callId,
             output: JSON.stringify({ status: "failed" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed" },
           });
           continue;
         }
@@ -916,6 +1026,14 @@ export async function POST(request: Request) {
             starts_at: appointment?.starts_at ?? null,
           }),
         });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: {
+            status: "scheduled",
+            starts_at: appointment?.starts_at ?? null,
+          },
+        });
         continue;
       }
 
@@ -946,6 +1064,21 @@ export async function POST(request: Request) {
               : { status: "not_found" },
           ),
         });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: match
+            ? {
+                status: "ok",
+                name: match.name,
+                role: match.display_role,
+                email: match.share_email ? match.email : null,
+                phone: match.share_phone ? match.phone : null,
+                extension: match.share_extension ? match.extension : null,
+                mobile: match.share_mobile ? match.mobile : null,
+              }
+            : { status: "not_found" },
+        });
         continue;
       }
 
@@ -965,6 +1098,11 @@ export async function POST(request: Request) {
           toolOutputs.push({
             tool_call_id: callId,
             output: JSON.stringify({ status: "not_found" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "not_found" },
           });
           continue;
         }
@@ -992,6 +1130,20 @@ export async function POST(request: Request) {
                 }
               : { status: "not_found" },
           ),
+        });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: finance
+            ? {
+                status: "ok",
+                item: finance.item,
+                value: finance.value,
+                notes: finance.notes,
+                valid_from: finance.valid_from,
+                valid_to: finance.valid_to,
+              }
+            : { status: "not_found" },
         });
         continue;
       }
@@ -1036,12 +1188,22 @@ export async function POST(request: Request) {
             status: complaint?.id ? "created" : "failed",
           }),
         });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: { status: complaint?.id ? "created" : "failed" },
+        });
         continue;
       }
 
       toolOutputs.push({
         tool_call_id: callId,
         output: JSON.stringify({ status: "unhandled_tool" }),
+      });
+      await logAiEvent("tool_output", {
+        name: call.name ?? null,
+        call_id: callId,
+        output: { status: "unhandled_tool" },
       });
     }
 
