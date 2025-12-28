@@ -3,6 +3,7 @@ import { AuthProvider } from "@/src/components/providers/auth-provider"
 import { redirect } from "next/navigation"
 import { Sidebar } from "@/src/components/layout/sidebar"
 import { DashboardHeader } from "@/src/components/dashboard/header"
+import { MainContent } from "@/src/components/dashboard/main-content"
 // import { TopNav } from "@/src/components/layout/top-nav"
 import { SidebarProvider, SidebarInset } from "@/src/components/ui/sidebar"
 
@@ -54,9 +55,9 @@ export default async function DashboardLayout({
                     <div className="h-svh overflow-hidden lg:p-2 w-full flex flex-col">
                         <div className="flex-1 lg:rounded-md overflow-hidden flex flex-col bg-card relative shadow-sm">
                             <DashboardHeader />
-                            <div className="flex-1 overflow-auto p-4 sm:p-6 w-full">
+                            <MainContent>
                                 {children}
-                            </div>
+                            </MainContent>
                         </div>
                     </div>
                 </SidebarInset>
