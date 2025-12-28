@@ -38,7 +38,6 @@ import {
     ChevronsUpDown,
     Users,
     MessageSquare,
-    DollarSign,
     LayoutDashboard,
     Shield,
     ChevronRight,

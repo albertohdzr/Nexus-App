@@ -35,6 +35,7 @@ export function AppointmentSettingsForm({ settings }: { settings: AppointmentSet
   )
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDays(settings.days_of_week?.map(String) ?? ["1", "2", "3", "4", "5"])
   }, [settings.days_of_week])
 

@@ -10,13 +10,15 @@ export function useChat(chatId: string | null) {
 
     useEffect(() => {
         if (!chatId) {
-            setMessages([]);
-            setChat(null);
             return;
         }
 
         const fetchChatAndMessages = async () => {
+            // Reset state immediately before fetching
+            setMessages([]);
+            setChat(null);
             setIsLoading(true);
+
             // Fetch Chat Details
             const { data: chatData } = await supabase
                 .from("chats")

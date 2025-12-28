@@ -12,18 +12,14 @@ import {
   DropdownMenuTrigger,
 } from "@/src/components/ui/dropdown-menu";
 import {
-  BarChart3,
   Sparkles,
-  Share2,
   Plus,
   FilePlus,
   UserPlus,
-  Github,
   Mail,
   Link2,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export function DashboardHeader() {
@@ -40,7 +36,7 @@ export function DashboardHeader() {
     
     // Check if last segment is an ID (e.g. UUID or long string), if so take the one before
     const isId = lastSegment.length > 20 || !isNaN(Number(lastSegment));
-    let titleSegment = isId && segments.length > 1 ? segments[segments.length - 2] : lastSegment;
+    const titleSegment = isId && segments.length > 1 ? segments[segments.length - 2] : lastSegment;
 
     // Handle standard "home" segment
     if (titleSegment === 'home') return 'Dashboard';

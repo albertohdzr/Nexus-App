@@ -8,13 +8,9 @@ import {
   SlidersHorizontal,
   ArrowUpDown,
   Upload,
-  Snowflake,
-  Flame,
   Check,
   X,
-  User,
   Mail,
-  Hand,
   Activity,
   Globe,
   ArrowUp,
@@ -22,7 +18,6 @@ import {
   Linkedin,
   Phone,
   Users2,
-  Zap,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -61,7 +56,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/src/components/ui/select"
-import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/src/components/ui/avatar"
 import { Badge } from "@/src/components/ui/badge"
 import { Label } from "@/src/components/ui/label"
 import { Separator } from "@/src/components/ui/separator"
@@ -82,7 +77,6 @@ import {
 } from "@/src/lib/lead"
 import type {
   CreateLeadActionState,
-  FollowUpActionState,
   SendLeadFollowUpAction,
 } from "@/src/app/(dashboard)/crm/leads/actions"
 import { createLeadManual } from "@/src/app/(dashboard)/crm/leads/actions"
@@ -663,16 +657,8 @@ function LeadDetailsSheet({
   onClose,
   sendFollowUpAction,
 }: LeadDetailsSheetProps) {
-  const [state, formAction, pending] = useActionState<
-    FollowUpActionState,
-    FormData
-  >(sendFollowUpAction, {})
+  // State monitoring removed as it was unused and unconnected
 
-  useEffect(() => {
-    if (state?.success) {
-        toast.success(state.success)
-    }
-  }, [state])
 
   if (!lead) return null
 

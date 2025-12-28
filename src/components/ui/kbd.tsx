@@ -1,7 +1,7 @@
 import { cn } from "@/src/lib/utils"
 import React from "react"
 
-export interface KbdProps extends React.HTMLAttributes<HTMLSpanElement> {}
+export type KbdProps = React.HTMLAttributes<HTMLSpanElement>
 
 const Kbd = React.forwardRef<HTMLSpanElement, KbdProps>(
   ({ className, ...props }, ref) => {

@@ -101,8 +101,6 @@ export function CalendarProvider({
 
   const getCurrentWeekEvents = () => {
     const weekStart = currentWeekStart;
-    const weekEnd = addDays(weekStart, 6);
-    
     // 1. Filter by date range (roughly, assuming events are loaded)
     // In a real app we might fetch here, but we assume events are injected via props or setEvents
     let filtered = events.filter(e => {
