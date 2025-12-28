@@ -250,6 +250,29 @@ export async function POST(request: Request) {
             (message.audio ? "Mensaje de voz" : undefined) ||
             "[Media/Other]";
 
+          if (message.id) {
+            const { data: existingMessage, error: existingMessageError } =
+              await supabase
+                .from("messages")
+                .select("id")
+                .eq("wa_message_id", message.id)
+                .maybeSingle();
+
+            if (existingMessageError) {
+              console.error("Error checking duplicate message:", {
+                messageId: message.id,
+                error: existingMessageError,
+              });
+            }
+
+            if (existingMessage) {
+              console.log("Skipping duplicate message", {
+                messageId: message.id,
+              });
+              continue;
+            }
+          }
+
           const messageTimestampMs = message.timestamp
             ? parseInt(message.timestamp, 10) * 1000
             : Date.now();

@@ -43,7 +43,7 @@ const client = new OpenAI({ apiKey });
 const DEFAULT_MODEL = "gpt-4o-mini";
 const DEFAULT_INSTRUCTIONS =
   "Eres el asistente un asistente de prueba, contesta de la manera mas chistosa que se te ocurra, habla como pirata.";
-const DEFAULT_REASONING: ReasoningEffort = "low";
+const DEFAULT_REASONING: ReasoningEffort = "medium";
 
 const createResponse = async ({
   input,
@@ -56,15 +56,16 @@ const createResponse = async ({
   return client.responses.create({
     model: model ?? DEFAULT_MODEL,
     instructions: instructions ?? DEFAULT_INSTRUCTIONS,
+    reasoning: { effort: reasoningEffort ?? DEFAULT_REASONING },
     input,
     ...(tools?.length
       ? {
-          tools: tools.map((tool) => ({
-            ...tool,
-            strict: tool.strict ?? true,
-            parameters: tool.parameters ?? {},
-          })),
-        }
+        tools: tools.map((tool) => ({
+          ...tool,
+          strict: tool.strict ?? true,
+          parameters: tool.parameters ?? {},
+        })),
+      }
       : {}),
     ...(conversationId ? { conversation: conversationId } : {}),
   });
@@ -77,6 +78,7 @@ const submitToolOutputs = async ({
 }: SubmitToolOutputsOptions) => {
   return client.responses.create({
     model: model ?? DEFAULT_MODEL,
+    reasoning: { effort: DEFAULT_REASONING },
     conversation: conversationId,
     input: toolOutputs.map((tool) => ({
       type: "custom_tool_call_output",
@@ -129,8 +131,8 @@ export const openAIService = {
 export type {
   ConversationMetadata,
   CreateResponseOptions,
-  SubmitToolOutputsOptions,
-  ToolOutput,
   ReasoningEffort,
   ResponseTool,
+  SubmitToolOutputsOptions,
+  ToolOutput,
 };

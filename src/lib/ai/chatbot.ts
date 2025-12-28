@@ -19,6 +19,8 @@ FORMATO
 - No hagas interrogatorios largos: pregunta lo mínimo necesario, en grupos pequeños.
 - Confirma/resume brevemente antes de ejecutar acciones importantes (agendar visita), sin pedir datos extra.
 - Si el usuario ya proporcionó algún dato requerido, NO lo vuelvas a pedir. Pregunta solo por los faltantes.
+- No uses Markdown; si necesitas énfasis usa *texto* y nunca **texto**.
+- Usa datos de contexto (leadProfile) para evitar preguntas repetidas.
 
 VERBOSIDAD Y FORMA
 - Responde con 1-3 oraciones cortas o hasta 5 bullets cuando sea necesario.
@@ -28,6 +30,7 @@ VERBOSIDAD Y FORMA
 ALCANCE Y DISCIPLINA
 - Implementa SOLO lo que el usuario pide dentro de tu rol; no agregues servicios, políticas o información extra.
 - Si hay ambigüedad real, pide 1 aclaración corta o presenta la opción más simple.
+- No preguntes por turno (matutino/vespertino), transporte, ciclo escolar ni fechas internas.
 
 CAPACIDADES PRINCIPALES
 1) Informar de manera general sobre el colegio (sin costos).
@@ -45,6 +48,13 @@ REGLA CRÍTICA: NO COSTOS
   - Que con gusto los atienden en admisiones.
   - Que puedes agendar una visita presencial para compartir información completa.
 - Si el usuario insiste o se molesta, solicita handoff (ver sección HANDOFF).
+- Nunca ofrezcas proactivamente costos/colegiaturas ni preguntes si quieren esa información.
+
+REGLA: CICLO ESCOLAR
+- No preguntes por ciclo escolar a menos que el usuario lo solicite explícitamente.
+
+REGLA: NO PREGUNTAR TURNOS/TRANSPORTE
+- No preguntes por turno (matutino/vespertino) ni transporte; no están en el alcance del bot.
 
 REGLA: TELÉFONO (FORMATO NATURAL, NO “521...”)
 - NO pidas que escriban el número como “521XXXXXXXXXX”.
@@ -58,11 +68,16 @@ REGLA: PEDIR CORREO ELECTRÓNICO
 - Cuando el usuario pida informes/admisiones o requisitos, solicita el correo electrónico del tutor.
 - Si el usuario no lo quiere dar o no lo tiene, NO bloquees el flujo: continúa y ofrece que admisiones puede solicitarlo después.
 
+REGLA: ESCUELA ACTUAL
+- Si el usuario pide informes, asume que viene de otro colegio y pregunta el nombre de la escuela actual.
+
 REGLA: SIEMPRE REGISTRAR LEAD (SIN CONFIRMACIÓN)
 - Si el usuario muestra interés en informes/inscripción/admisiones/visita, registra el lead en cuanto tengas los campos requeridos.
 - NO preguntes “¿Confirmas que lo registre?” ni uses frases tipo “cuando me lo indiques”.
 - Si faltan datos para crear el lead, pide SOLO los faltantes en bullets, y al tenerlos ejecuta create_lead.
 - Después de crear el lead, confirma con una frase corta: “Listo, ya quedó tu registro 😊”.
+- Después del registro, ofrece agendar una visita presencial.
+- No digas que Admisiones contactará “en breve”; tú das el seguimiento salvo que haya handoff.
 
 DETECCIÓN DE INTENCIÓN (GUÍA)
 - “Informes / inscripciones / admisiones / quiero meter a mi hijo / requisitos / cupo / me interesa” => FLUJO LEAD (y si piden requisitos, también FLUJO REQUISITOS).
@@ -83,6 +98,7 @@ REGLA CLAVE: DISPONIBILIDAD SOLO POR SLOTS (NO INVENTAR HORARIOS)
 - Para proponer horarios SIEMPRE debes llamar list_available_appointments.
 - SOLO ofrece opciones que existan en los slots devueltos por la herramienta.
 - Máximo 3-5 opciones por mensaje.
+- Si solo hay 1 slot disponible, ofrece solo ese slot.
 
 NORMALIZACIÓN DE FECHAS (SIN PEDIR FORMATO ESTRICTO)
 - NO obligues al usuario a escribir fechas en YYYY-MM-DD.
@@ -104,6 +120,8 @@ REGLA: AGENDAR SOLO TRAS ELECCIÓN EXACTA
 REGLA: CONFIRMACIÓN DE CITA Y RECORDATORIO
 - Al confirmar una cita agendada, NO preguntes si quiere recordatorio.
 - Indica que se enviará un recordatorio por WhatsApp un día antes.
+- Indica que es preferible que asista el alumno.
+- Menciona que se enviaron las indicaciones al correo registrado.
 
 REGLA: NO MOSTRAR IDs INTERNOS
 - No muestres IDs de lead, cita, slots, o cualquier UUID.
@@ -116,10 +134,13 @@ Objetivo: enviar por WhatsApp el PDF correcto de requisitos según la división.
   - Elementary
   - Middle School
   - High School
+- Si el usuario menciona una división (ej. Primaria/Elementary/Secundaria/Preparatoria), úsala sin volver a preguntar.
 - Si el usuario ya dio el grado/nivel (o está en el contexto del lead), intenta inferir la división sin volver a preguntar.
 - Cuando tengas la división, usa send_requirements_pdf inmediatamente.
-- Después de enviar, responde con una confirmación corta (sin IDs), por ejemplo:
-  “Listo 😊 Ya te envié los requisitos. Si quieres, también puedo compartirte horarios disponibles para una visita.”
+- Después de enviar, responde con una confirmación corta (sin IDs) y ofrece ayuda para agendar visita.
+- Si el usuario no pidió otra cosa, pregunta directamente si desea agendar una visita presencial.
+- NO hagas preguntas sobre requisitos específicos (documentos, casos, excepciones) ni sobre proceso de admisión.
+- Si el usuario cambia de división y contradice un grado/nivel ya indicado, confirma con una sola pregunta corta (ej. “¿Entonces sería Preparatoria y no 1° de primaria?”).
 
 IMPORTANTE (DIVISIONES)
 - Para llamar la herramienta send_requirements_pdf, usa exactamente uno de estos valores:
@@ -131,7 +152,8 @@ HERRAMIENTAS DISPONIBLES Y CÓMO USARLAS
 1) create_lead
 - Úsala SOLO cuando ya tengas los campos requeridos:
   contact_name, contact_phone, student_first_name, student_last_name_paternal, grade_interest.
-- Pide el correo y escuela actual si aplica, pero NO bloquees si no lo comparten.
+- Pide SIEMPRE la escuela actual del estudiante.
+- Pide el correo electrónico, pero NO bloquees si no lo comparten.
 - NO pidas confirmación para crear el lead.
 - “source” por defecto: "whatsapp".
 - “summary” debe ser un resumen breve y útil (1-3 líneas).
@@ -334,30 +356,6 @@ const GET_DIRECTORY_CONTACT_TOOL: ResponseTool = {
   },
 };
 
-const GET_FINANCE_TOOL: ResponseTool = {
-  type: "function",
-  name: "get_finance_info",
-  description:
-    "Devuelve información financiera predefinida (fechas de pago, conceptos, montos, contacto de caja). Úsalo para resolver preguntas de pagos.",
-  parameters: {
-    type: "object",
-    properties: {
-      capability_slug: {
-        type: "string",
-        description:
-          "Slug de la capacidad financiera (ej. pagos, colegiaturas).",
-      },
-      item: {
-        type: "string",
-        description:
-          "Etiqueta o concepto solicitado (ej. fecha_limite_inscripcion, caja_contacto).",
-      },
-    },
-    required: ["capability_slug", "item"],
-    additionalProperties: false,
-  },
-};
-
 const CREATE_COMPLAINT_TOOL: ResponseTool = {
   type: "function",
   name: "create_complaint",
@@ -400,7 +398,7 @@ const SCHEDULE_VISIT_TOOL: ResponseTool = {
   type: "function",
   name: "schedule_visit",
   description:
-    "Agenda una visita de admisiones cuando ya tengas los datos necesarios. Úsalo solo cuando el usuario confirmó interés en agendar.",
+    "Agenda una visita de admisiones cuando ya tengas los datos necesarios. Úsalo solo cuando el usuario eligió un slot exacto devuelto por list_available_appointments.",
   parameters: {
     type: "object",
     properties: {
@@ -474,7 +472,7 @@ const LIST_AVAILABLE_APPOINTMENTS_TOOL: ResponseTool = {
   type: "function",
   name: "list_available_appointments",
   description:
-    "Lista los slots disponibles para visitas dentro de un rango de fechas.",
+    "Lista los slots disponibles para visitas dentro de un rango de fechas. Usa solo estos slots y no inventes horarios.",
   parameters: {
     type: "object",
     properties: {
@@ -627,9 +625,6 @@ const generateChatbotReply = async ({
   );
   if (hasDirectoryContacts) {
     tools.push(GET_DIRECTORY_CONTACT_TOOL);
-  }
-  if (!context.leadActive) {
-    tools.push(GET_FINANCE_TOOL);
   }
   tools.push(CREATE_COMPLAINT_TOOL);
   tools.push(SEND_REQUIREMENTS_PDF_TOOL);

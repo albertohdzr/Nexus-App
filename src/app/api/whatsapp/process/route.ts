@@ -45,7 +45,62 @@ const UUID_V4_REGEX =
   /\b[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 
 const sanitizeReplyText = (text: string) =>
-  text.replace(UUID_V4_REGEX, "[confirmacion]");
+  text
+    .replace(UUID_V4_REGEX, "[confirmacion]")
+    .replace(/\*\*([^*]+)\*\*/g, "*$1*");
+
+const enforceResponsePolicies = (reply: string, input: string) => {
+  const normalizedInput = input.toLowerCase();
+  const askedCosts = /(costos|colegiaturas|precios|cuotas|becas|descuentos)/i.test(
+    normalizedInput,
+  );
+  const askedCycle = /\b(ciclo|ciclos)\b/i.test(normalizedInput);
+  const askedTurn = /\b(turno|matutino|vespertino)\b/i.test(normalizedInput);
+  const askedTransport = /\b(transporte|estacionamiento|auto|automovil|automóvil|acceso)\b/i.test(
+    normalizedInput,
+  );
+  let cleaned = reply;
+
+  if (!askedCosts) {
+    cleaned = cleaned.replace(
+      /^.*\b(costos|colegiaturas|precios|cuotas|becas|descuentos)\b.*$/gim,
+      "",
+    );
+  }
+
+  if (!askedCycle) {
+    cleaned = cleaned.replace(/^.*\b(ciclo|ciclos)\b.*$/gim, "");
+  }
+
+  if (!askedTurn) {
+    cleaned = cleaned.replace(/^.*\b(turno|matutino|vespertino)\b.*$/gim, "");
+  }
+
+  if (!askedTransport) {
+    cleaned = cleaned.replace(
+      /^.*\b(transporte|estacionamiento|auto|automovil|automóvil|acceso)\b.*$/gim,
+      "",
+    );
+  }
+
+  cleaned = cleaned.replace(
+    /^.*\b(se comunicará|se pondrá en contacto|te contactará)\b.*$/gim,
+    "",
+  );
+
+  cleaned = cleaned.replace(
+    /^.*\b(llamada|whatsapp)\b.*\b(horario|contacto|prefieres)\b.*$/gim,
+    "",
+  );
+
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+
+  if (!cleaned) {
+    return "Si gustas, puedo agendarte una visita presencial para brindarte toda la información.";
+  }
+
+  return cleaned;
+};
 
 const splitName = (fullName: string | null | undefined) => {
   if (!fullName) {
@@ -319,7 +374,6 @@ export async function POST(request: Request) {
         student_first_name: lead.student_first_name || null,
         student_last_name_paternal: lead.student_last_name_paternal || null,
         grade_interest: lead.grade_interest || null,
-        school_year: lead.school_year || null,
         current_school: lead.current_school || null,
       }
     : null;
@@ -1224,7 +1278,10 @@ export async function POST(request: Request) {
     return new NextResponse("No response", { status: 200 });
   }
 
-  const sanitizedReplyText = sanitizeReplyText(replyText);
+  const sanitizedReplyText = enforceResponsePolicies(
+    sanitizeReplyText(replyText),
+    input,
+  );
 
   const { messageId, error: sendError } = await sendWhatsAppText({
     phoneNumberId: organization.phone_number_id,
