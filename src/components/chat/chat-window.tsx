@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-
 import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { createClient } from "@/src/lib/supabase/client";
@@ -14,171 +13,55 @@ import { Input } from "../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { MoreVertical, Phone, Video, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download, Hand, Mic, Search } from "lucide-react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
-import { Chat, Message } from "@/src/types/chat";
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png"];
-const ALLOWED_AUDIO_TYPES = [
-    "audio/aac",
-    "audio/amr",
-    "audio/mpeg",
-    "audio/mp4",
-    "audio/ogg",
-    "audio/ogg; codecs=opus",
-    "audio/opus",
-];
-const MAX_AUDIO_BYTES = 16 * 1024 * 1024; // 16 MB
-const ALLOWED_DOC_TYPES = [
-    "text/plain",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/vnd.ms-powerpoint",
-    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    "application/pdf",
-];
-const MAX_DOC_BYTES = 100 * 1024 * 1024; // 100 MB
+import { useChat } from "@/src/hooks/use-chat";
+import { useMediaRecorder } from "@/src/hooks/use-media-recorder";
+import { useFileHandler } from "@/src/hooks/use-file-handler";
 
 export default function ChatWindow() {
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [chat, setChat] = useState<Chat | null>(null);
+    // Hooks
+    const searchParams = useSearchParams();
+    const chatId = searchParams.get("chatId");
+    const { messages, chat, setChat } = useChat(chatId);
+    
+    // Local State
     const [messageInput, setMessageInput] = useState("");
     const [captionInput, setCaptionInput] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    const [attachment, setAttachment] = useState<File | null>(null);
-    const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const [isRecording, setIsRecording] = useState(false);
-    const [isConverting, setIsConverting] = useState(false);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const recordedChunksRef = useRef<BlobPart[]>([]);
     const [isClosing, setIsClosing] = useState(false);
-    const supabase = createClient();
-    const searchParams = useSearchParams();
-    const chatId = searchParams.get("chatId");
+    
+    // Custom Hooks
+    const { 
+        attachment, 
+        attachmentPreview, 
+        isConverting, 
+        handleFileSelection, 
+        clearAttachment, 
+        setAttachment,
+        setAttachmentPreview,
+        ALLOWED_IMAGE_TYPES, 
+        ALLOWED_DOC_TYPES, 
+        ALLOWED_AUDIO_TYPES 
+    } = useFileHandler();
+
+    const { isRecording, startRecording, stopRecording } = useMediaRecorder({
+        onStop: (file) => {
+            handleFileSelection(file).then(() => {
+                const form = document.getElementById("message-form") as HTMLFormElement;
+                if (form) {
+                    setTimeout(() => form.requestSubmit(), 100);
+                }
+            });
+        }
+    });
+
+    // Refs
     const scrollRef = useRef<HTMLDivElement>(null);
     const pickerRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const supabase = createClient();
 
-    const handleFileSelection = async (file: File) => {
-        let workingFile = file;
-        const wantsAudioConversion =
-            file.type.startsWith("audio/") && file.type !== "audio/mp4";
-
-        if (wantsAudioConversion) {
-            try {
-                setIsConverting(true);
-                const { convertBlobToMp4 } = await import("@/src/lib/convert-audio");
-                const mp4Blob = await convertBlobToMp4(file);
-                const baseName = file.name.replace(/\.[^/.]+$/, "") || "audio";
-                workingFile = new File(
-                    [mp4Blob],
-                    `${baseName}-${Date.now()}.m4a`,
-                    { type: "audio/mp4" }
-                );
-            } catch (err) {
-                console.error("Error converting audio:", err);
-                toast.error("No se pudo convertir el audio a MP4/AAC.");
-                setIsConverting(false);
-                return;
-            }
-            setIsConverting(false);
-        }
-
-        const isImage = ALLOWED_IMAGE_TYPES.includes(workingFile.type);
-        const isDoc = ALLOWED_DOC_TYPES.includes(workingFile.type);
-        const isAudio = ALLOWED_AUDIO_TYPES.includes(workingFile.type);
-        if (!isImage && !isDoc && !isAudio) {
-            toast.error("Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT, audio (AAC/AMR/MP3/OGG/MP4) o imagen JPEG/PNG.");
-            return;
-        }
-        if (isImage && workingFile.size > MAX_IMAGE_BYTES) {
-            toast.error("La imagen debe pesar máximo 5 MB");
-            return;
-        }
-        if (isDoc && workingFile.size > MAX_DOC_BYTES) {
-            toast.error("El archivo debe pesar máximo 100 MB");
-            return;
-        }
-        if (isAudio && workingFile.size > MAX_AUDIO_BYTES) {
-            toast.error("El audio debe pesar máximo 16 MB");
-            return;
-        }
-        if (attachmentPreview) {
-            URL.revokeObjectURL(attachmentPreview);
-        }
-        const previewUrl =
-            isImage || workingFile.type === "application/pdf" ? URL.createObjectURL(workingFile) : null;
-        setAttachment(workingFile);
-        setAttachmentPreview(previewUrl);
-    };
-
-    useEffect(() => {
-        if (!chatId) {
-            // eslint-disable-next-line react-hooks/set-state-in-effect
-            setMessages([]);
-            setChat(null);
-            return;
-        }
-
-        const fetchChatAndMessages = async () => {
-            // Fetch Chat Details
-            const { data: chatData } = await supabase
-                .from("chats")
-                .select("*")
-                .eq("id", chatId)
-                .single();
-
-            if (chatData) {
-                setChat(chatData);
-            }
-
-            // Fetch Messages
-            const { data: messagesData } = await supabase
-                .from("messages")
-                .select("*")
-                .eq("chat_id", chatId)
-                .order("created_at", { ascending: true });
-
-            if (messagesData) {
-                setMessages(messagesData);
-            }
-        };
-
-        fetchChatAndMessages();
-
-        const channel = supabase
-            .channel(`chat_${chatId}`)
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "messages", filter: `chat_id=eq.${chatId}` },
-                (payload) => {
-                    if (payload.eventType === "INSERT") {
-                        setMessages((prev) => [...prev, payload.new as Message]);
-                    }
-                    if (payload.eventType === "UPDATE") {
-                        setMessages((prev) =>
-                            prev
-                                .map((msg) =>
-                                    msg.id === payload.new.id ? (payload.new as Message) : msg
-                                )
-                                .sort(
-                                    (a, b) =>
-                                        new Date(a.created_at).getTime() -
-                                        new Date(b.created_at).getTime()
-                                )
-                        );
-                    }
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [chatId, supabase]);
-
+    // Effects
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
@@ -203,18 +86,10 @@ export default function ChatWindow() {
         }
     }, [messages]);
 
-    useEffect(() => {
-        return () => {
-            if (attachmentPreview) {
-                URL.revokeObjectURL(attachmentPreview);
-            }
-        };
-    }, [attachmentPreview]);
-
+    // Helpers
     const handoverRequested =
         Boolean(chat?.requested_handoff) ||
         messages.some((message) => message.payload?.handover);
-    const canSend = Boolean(messageInput.trim() || captionInput.trim() || attachment);
 
     const onEmojiClick = (emojiData: EmojiClickData) => {
         setMessageInput((prev) => prev + emojiData.emoji);
@@ -305,7 +180,7 @@ export default function ChatWindow() {
             {/* Background Pattern */}
             <div className="absolute inset-0 opacity-[0.06] dark:opacity-[0.06] pointer-events-none"
                 style={{
-                    backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
+                    backgroundImage: `url("/assets/whatsapp-bg.png")`,
                     backgroundSize: "412.5px"
                 }}
             />
@@ -382,9 +257,6 @@ export default function ChatWindow() {
                     const isDocumentMessage =
                         message.type === "document" ||
                         (mediaMime && typeof mediaMime === 'string' ? !mediaMime.startsWith("image/") && !mediaMime.startsWith("audio/") : false);
-                    const displayName =
-                        message.sender_name ||
-                        (isBot ? "Bot" : isReceived ? "Contacto" : "Agente");
 
                     return (
                         <div
@@ -581,8 +453,7 @@ export default function ChatWindow() {
                         else {
                             setMessageInput("");
                             setCaptionInput("");
-                            setAttachment(null);
-                            setAttachmentPreview(null);
+                            clearAttachment();
                             setShowEmojiPicker(false);
                             const form = document.getElementById("message-form") as HTMLFormElement;
                              if(form) form.reset();
@@ -615,7 +486,7 @@ export default function ChatWindow() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => { setAttachment(null); setAttachmentPreview(null); }}
+                                onClick={() => clearAttachment()}
                                 className="text-gray-500 hover:text-red-500"
                             >
                                 <X className="h-5 w-5" />
@@ -662,35 +533,9 @@ export default function ChatWindow() {
                             )}
                             onClick={async () => {
                                 if (isRecording) {
-                                    mediaRecorderRef.current?.stop();
-                                    return;
-                                }
-                                try {
-                                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                                    const candidateMimes = ["audio/ogg; codecs=opus", "audio/webm", "audio/mp4"];
-                                    const mimeType = candidateMimes.find(m => MediaRecorder.isTypeSupported(m));
-                                    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-                                    recordedChunksRef.current = [];
-                                    recorder.ondataavailable = (e) => { if(e.data.size > 0) recordedChunksRef.current.push(e.data); };
-                                    recorder.onstop = () => {
-                                        const blob = new Blob(recordedChunksRef.current, { type: mimeType || "audio/webm" });
-                                        // Simple file creation, skipping complex convert logic for brevity in this replace block, can add back if needed
-                                        const file = new File([blob], `voice-${Date.now()}.ogg`, { type: mimeType || "audio/ogg" });
-                                        handleFileSelection(file).then(() => {
-                                            const form = document.getElementById("message-form") as HTMLFormElement;
-                                            if (form) {
-                                                 // Need to wait slightly for state to update
-                                                 setTimeout(() => form.requestSubmit(), 100);
-                                            }
-                                        });
-                                        stream.getTracks().forEach(t => t.stop());
-                                        setIsRecording(false);
-                                    };
-                                    mediaRecorderRef.current = recorder;
-                                    recorder.start();
-                                    setIsRecording(true);
-                                } catch (err) {
-                                    toast.error("Error accessing microphone");
+                                    stopRecording();
+                                } else {
+                                    await startRecording();
                                 }
                             }}
                         >
@@ -702,5 +547,3 @@ export default function ChatWindow() {
         </div>
     );
 }
-
-
