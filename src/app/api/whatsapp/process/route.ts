@@ -41,6 +41,12 @@ const parseToolArguments = (
   return value;
 };
 
+const UUID_V4_REGEX =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+
+const sanitizeReplyText = (text: string) =>
+  text.replace(UUID_V4_REGEX, "[confirmacion]");
+
 const splitName = (fullName: string | null | undefined) => {
   if (!fullName) {
     return { firstName: null, lastNamePaternal: null };
@@ -515,7 +521,6 @@ export async function POST(request: Request) {
           tool_call_id: callId,
           output: JSON.stringify({
             status: result.leadId ? "created" : "failed",
-            lead_id: result.leadId,
           }),
         });
         continue;
@@ -665,6 +670,21 @@ export async function POST(request: Request) {
       if (call.name === "list_available_appointments") {
         const startDateStr = String(args.start_date || "").trim();
         const endDateStr = String(args.end_date || "").trim();
+        const limitValue = (() => {
+          if (typeof args.limit === "number") {
+            return args.limit;
+          }
+          if (typeof args.limit === "string") {
+            const parsed = Number.parseInt(args.limit, 10);
+            return Number.isNaN(parsed) ? null : parsed;
+          }
+          return null;
+        })();
+        const effectiveLimit = limitValue ?? 20;
+        const normalizedLimit = Number.isFinite(effectiveLimit)
+          ? Math.floor(effectiveLimit)
+          : 20;
+        const clampedLimit = Math.min(50, Math.max(1, normalizedLimit));
 
         const startDate = new Date(`${startDateStr}T00:00:00`);
         const endDate = new Date(`${endDateStr}T00:00:00`);
@@ -692,14 +712,15 @@ export async function POST(request: Request) {
         const { data: slots, error: slotsError } = await supabase
           .from("availability_slots")
           .select(
-            "id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked",
+            "starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked",
           )
           .eq("organization_id", organization.id)
           .eq("is_active", true)
           .eq("is_blocked", false)
           .gte("starts_at", startDate.toISOString())
           .lt("starts_at", endExclusive.toISOString())
-          .order("starts_at", { ascending: true });
+          .order("starts_at", { ascending: true })
+          .limit(clampedLimit);
 
         if (slotsError) {
           console.error("Error listing availability slots", slotsError);
@@ -718,7 +739,6 @@ export async function POST(request: Request) {
               slot.appointments_count < slot.max_appointments,
           )
           .map((slot) => ({
-            id: slot.id,
             starts_at: slot.starts_at,
             ends_at: slot.ends_at,
             campus: slot.campus,
@@ -729,49 +749,70 @@ export async function POST(request: Request) {
                 : null,
           }));
 
+        const outputSlots = availableSlots.slice(0, Math.min(5, availableSlots.length));
+
         toolOutputs.push({
           tool_call_id: callId,
           output: JSON.stringify({
-            status: availableSlots.length ? "ok" : "empty",
-            slots: availableSlots,
+            status: outputSlots.length ? "ok" : "empty",
+            slots: outputSlots,
           }),
         });
         continue;
       }
 
       if (call.name === "schedule_visit") {
-        const preferredDate = String(args.preferred_date || "").trim();
-        const preferredTimeRaw = String(args.preferred_time || "").trim();
+        const slotStartsAt = String(args.slot_starts_at || "").trim();
         const notes = String(args.notes || "").trim();
 
-        let preferredTime = preferredTimeRaw;
-        let timeNote = "";
-        if (preferredTimeRaw.toLowerCase() === "mañana") {
-          preferredTime = "10:00";
-          timeNote = "Preferencia: mañana";
-        } else if (preferredTimeRaw.toLowerCase() === "tarde") {
-          preferredTime = "16:00";
-          timeNote = "Preferencia: tarde";
-        }
+        let leadId = lead?.id ?? null;
+        if (!leadId) {
+          const contactName = String(args.contact_name || "").trim();
+          const contactPhone = String(args.contact_phone || "").trim();
+          const studentFirstName = String(args.student_first_name || "").trim();
+          const studentLastNamePaternal = String(
+            args.student_last_name_paternal || "",
+          ).trim();
+          const gradeInterest = String(args.grade_interest || "").trim();
 
-        const leadResult = await ensureLeadForArgs({
-          ...args,
-          summary: notes || "Solicitud de visita",
-          source: "whatsapp",
-        });
+          if (
+            !contactName ||
+            !contactPhone ||
+            !studentFirstName ||
+            !studentLastNamePaternal ||
+            !gradeInterest
+          ) {
+            toolOutputs.push({
+              tool_call_id: callId,
+              output: JSON.stringify({
+                status: "failed",
+                error: "missing_lead_fields",
+              }),
+            });
+            continue;
+          }
 
-        if (!leadResult.leadId || !preferredDate || !preferredTime) {
-          toolOutputs.push({
-            tool_call_id: callId,
-            output: JSON.stringify({
-              status: "failed",
-              error: "missing_fields",
-            }),
+          const leadResult = await ensureLeadForArgs({
+            ...args,
+            summary: notes || "Solicitud de visita",
+            source: "whatsapp",
           });
-          continue;
+
+          leadId = leadResult.leadId;
+
+          if (!leadId) {
+            toolOutputs.push({
+              tool_call_id: callId,
+              output: JSON.stringify({
+                status: "failed",
+                error: "missing_lead_fields",
+              }),
+            });
+            continue;
+          }
         }
 
-        const startDate = new Date(`${preferredDate}T${preferredTime}:00`);
+        const startDate = new Date(slotStartsAt);
         if (Number.isNaN(startDate.getTime())) {
           toolOutputs.push({
             tool_call_id: callId,
@@ -815,20 +856,18 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const appointmentNotes = [notes, timeNote].filter(Boolean).join(" | ");
-
         const { data: appointment, error: appointmentError } = await supabase
           .from("appointments")
           .insert({
             organization_id: organization.id,
-            lead_id: leadResult.leadId,
+            lead_id: leadId,
             slot_id: slot.id,
             starts_at: slot.starts_at,
             ends_at: slot.ends_at,
             campus: slot.campus || null,
             type: "visit",
             status: "scheduled",
-            notes: appointmentNotes || null,
+            notes: notes || null,
             created_at: nowIso,
             updated_at: nowIso,
           })
@@ -850,7 +889,7 @@ export async function POST(request: Request) {
             status: "visit_scheduled",
             updated_at: nowIso,
           })
-          .eq("id", leadResult.leadId)
+          .eq("id", leadId)
           .eq("organization_id", organization.id);
 
         if (leadUpdateError) {
@@ -874,9 +913,7 @@ export async function POST(request: Request) {
           tool_call_id: callId,
           output: JSON.stringify({
             status: "scheduled",
-            appointment_id: appointment?.id ?? null,
             starts_at: appointment?.starts_at ?? null,
-            slot_id: slot.id,
           }),
         });
         continue;
@@ -997,7 +1034,6 @@ export async function POST(request: Request) {
           tool_call_id: callId,
           output: JSON.stringify({
             status: complaint?.id ? "created" : "failed",
-            complaint_id: complaint?.id ?? null,
           }),
         });
         continue;
@@ -1026,11 +1062,13 @@ export async function POST(request: Request) {
     return new NextResponse("No response", { status: 200 });
   }
 
+  const sanitizedReplyText = sanitizeReplyText(replyText);
+
   const { messageId, error: sendError } = await sendWhatsAppText({
     phoneNumberId: organization.phone_number_id,
     accessToken: whatsappAccessToken,
     to: chat.wa_id,
-    body: replyText,
+    body: sanitizedReplyText,
   });
 
   if (sendError) {
@@ -1044,7 +1082,7 @@ export async function POST(request: Request) {
     chat_id: chat.id,
     chat_session_id: session.id,
     wa_message_id: messageId,
-    body: replyText,
+    body: sanitizedReplyText,
     type: "text",
     status: "sent",
     sent_at: nowIso,

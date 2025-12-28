@@ -85,10 +85,11 @@ const CREATE_LEAD_TOOL: ResponseTool = {
       },
       contact_phone: {
         type: "string",
-        description: "Teléfono de contacto con lada (ej. 5218711234567).",
+        description:
+          "Teléfono de contacto (10 dígitos o +52). Acepta espacios o guiones.",
       },
       contact_email: {
-        type: "string",
+        type: ["string", "null"],
         description: "Correo electrónico del contacto.",
       },
       student_first_name: {
@@ -104,7 +105,7 @@ const CREATE_LEAD_TOOL: ResponseTool = {
         description: "Grado o nivel al que desea inscribirse (requerido).",
       },
       current_school: {
-        type: "string",
+        type: ["string", "null"],
         description: "Escuela actual del estudiante.",
       },
       summary: {
@@ -223,39 +224,36 @@ const SCHEDULE_VISIT_TOOL: ResponseTool = {
     type: "object",
     properties: {
       contact_name: {
-        type: "string",
+        type: ["string", "null"],
         description: "Nombre completo del contacto/tutor.",
       },
       contact_phone: {
-        type: "string",
+        type: ["string", "null"],
         description: "Teléfono con lada del contacto.",
       },
       student_first_name: {
-        type: "string",
+        type: ["string", "null"],
         description: "Nombre del estudiante.",
       },
       student_last_name_paternal: {
-        type: "string",
+        type: ["string", "null"],
         description: "Apellido paterno del estudiante.",
       },
       grade_interest: {
-        type: "string",
+        type: ["string", "null"],
         description: "Grado o nivel de interés.",
       },
       current_school: {
-        type: "string",
+        type: ["string", "null"],
         description: "Escuela actual del estudiante; si no aplica, deja vacío.",
       },
-      preferred_date: {
+      slot_starts_at: {
         type: "string",
-        description: "Fecha preferida para la visita (YYYY-MM-DD).",
-      },
-      preferred_time: {
-        type: "string",
-        description: "Hora preferida (HH:MM) o 'mañana/tarde'.",
+        description:
+          "Fecha y hora exacta del slot en formato ISO 8601.",
       },
       notes: {
-        type: "string",
+        type: ["string", "null"],
         description: "Resumen breve de la solicitud; si no hay, deja vacío.",
       },
     },
@@ -266,8 +264,7 @@ const SCHEDULE_VISIT_TOOL: ResponseTool = {
       "student_last_name_paternal",
       "grade_interest",
       "current_school",
-      "preferred_date",
-      "preferred_time",
+      "slot_starts_at",
       "notes",
     ],
     additionalProperties: false,
@@ -310,8 +307,15 @@ const LIST_AVAILABLE_APPOINTMENTS_TOOL: ResponseTool = {
         type: "string",
         description: "Fecha final del rango (YYYY-MM-DD).",
       },
+      limit: {
+        type: "integer",
+        description: "Cantidad máxima de slots (default 20, máximo 50).",
+        default: 20,
+        minimum: 1,
+        maximum: 50,
+      },
     },
-    required: ["start_date", "end_date"],
+    required: ["start_date", "end_date", "limit"],
     additionalProperties: false,
   },
   strict: true,
