@@ -49,6 +49,9 @@ export async function updateOrganization(formData: FormData) {
   if (formData.has("name")) updateData.name = formData.get("name") as string;
   if (formData.has("display_phone_number")) updateData.display_phone_number = formData.get("display_phone_number") as string;
   if (formData.has("phone_number_id")) updateData.phone_number_id = formData.get("phone_number_id") as string;
+  if (formData.has("whatsapp_business_account_id")) {
+    updateData.whatsapp_business_account_id = formData.get("whatsapp_business_account_id") as string;
+  }
   if (formData.has("bot_name")) updateData.bot_name = (formData.get("bot_name") as string) || null;
   if (formData.has("bot_instructions")) updateData.bot_instructions = (formData.get("bot_instructions") as string) || null;
   if (formData.has("bot_tone")) updateData.bot_tone = (formData.get("bot_tone") as string) || null;

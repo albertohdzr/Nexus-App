@@ -6,3 +6,4 @@ export * from "./whatsapp";
 export * from "./lead";
 export * from "./admission";
 export * from "./email-template";
+export * from "./whatsapp-template";

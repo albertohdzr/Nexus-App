@@ -4,6 +4,7 @@ export type Organization = {
   slug: string;
   display_phone_number?: string;
   phone_number_id?: string;
+  whatsapp_business_account_id?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;

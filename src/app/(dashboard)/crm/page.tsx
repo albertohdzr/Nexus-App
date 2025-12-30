@@ -3,7 +3,7 @@
 import { DashboardHeader } from "@/src/components/dashboard/header"
 import { navigationModules } from "@/src/config/navigation"
 import Link from "next/link"
-import { ArrowUpRight, Calendar, Users, FileText, Settings } from "lucide-react"
+import { ArrowUpRight, Calendar, Users, FileText, Settings, MessageCircle } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/src/components/ui/card"
 import { StatsCards } from "@/src/components/dashboard/stats-cards"
@@ -54,6 +54,19 @@ export default function CRMPage() {
                         <CardContent>
                             <div className="text-2xl font-bold">Email Templates</div>
                             <p className="text-xs text-muted-foreground">Configure automated responses.</p>
+                        </CardContent>
+                    </Card>
+                </Link>
+
+                <Link href="/crm/whatsapp-templates" className="block group">
+                    <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">WhatsApp</CardTitle>
+                            <MessageCircle className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">Plantillas WA</div>
+                            <p className="text-xs text-muted-foreground">Manage approved WhatsApp templates.</p>
                         </CardContent>
                     </Card>
                 </Link>

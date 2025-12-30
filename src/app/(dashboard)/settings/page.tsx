@@ -234,6 +234,19 @@ export default function SettingsPage() {
                                 <p className="text-xs text-muted-foreground">Found in your Meta App Dashboard under WhatsApp API Setup.</p>
                             </div>
                         </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="whatsapp_business_account_id">WhatsApp Business Account ID</Label>
+                                <Input
+                                    id="whatsapp_business_account_id"
+                                    name="whatsapp_business_account_id"
+                                    defaultValue={org.whatsapp_business_account_id || ""}
+                                    placeholder="e.g. 1163577092530240"
+                                />
+                                <p className="text-xs text-muted-foreground">Required to create templates in Meta.</p>
+                            </div>
+                        </div>
                     </CardContent>
                     <CardFooter className="flex justify-end">
                         <Button type="submit" disabled={isPending}>

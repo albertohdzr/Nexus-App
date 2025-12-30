@@ -17,6 +17,11 @@ type ChatRecord = {
   phone_number?: string | null;
 };
 
+type TemplateChange = {
+  field?: string;
+  value?: Record<string, unknown>;
+};
+
 async function handleStatusUpdates(value: WhatsAppValue) {
   const statuses = value.statuses;
   if (!statuses?.length) return;
@@ -67,6 +72,221 @@ async function handleStatusUpdates(value: WhatsAppValue) {
   }
 }
 
+const normalizeLanguage = (value: string | null | undefined) => {
+  if (!value) return "";
+  const cleaned = value.replace("-", "_");
+  const parts = cleaned.split("_");
+  if (parts.length === 2) {
+    return `${parts[0].toLowerCase()}_${parts[1].toUpperCase()}`;
+  }
+  return cleaned;
+};
+
+const isTemplateChangeField = (field?: string) =>
+  field === "message_template_status_update" ||
+  field === "message_template_quality_update" ||
+  field === "message_template_components_update";
+
+const buildComponentsFromTemplateUpdate = (value: Record<string, unknown>) => {
+  const components: Array<Record<string, unknown>> = [];
+  const headerText = value["message_template_title"];
+  const bodyText = value["message_template_element"];
+  const footerText = value["message_template_footer"];
+
+  if (typeof headerText === "string" && headerText.trim()) {
+    components.push({
+      type: "HEADER",
+      format: "TEXT",
+      text: headerText,
+    });
+  }
+
+  if (typeof bodyText === "string" && bodyText.trim()) {
+    components.push({
+      type: "BODY",
+      text: bodyText,
+    });
+  }
+
+  if (typeof footerText === "string" && footerText.trim()) {
+    components.push({
+      type: "FOOTER",
+      text: footerText,
+    });
+  }
+
+  const buttonsValue = value["message_template_buttons"];
+  if (Array.isArray(buttonsValue) && buttonsValue.length) {
+    const buttons = buttonsValue.map((button) => {
+      const buttonType = String(
+        (button as Record<string, unknown>)["message_template_button_type"] ||
+          "",
+      ).toUpperCase();
+      const buttonText = String(
+        (button as Record<string, unknown>)["message_template_button_text"] ||
+          "",
+      );
+      if (buttonType === "URL") {
+        return {
+          type: "URL",
+          text: buttonText,
+          url: (button as Record<string, unknown>)["message_template_button_url"],
+        };
+      }
+      if (buttonType === "PHONE_NUMBER") {
+        return {
+          type: "PHONE_NUMBER",
+          text: buttonText,
+          phone_number:
+            (button as Record<string, unknown>)
+              ["message_template_button_phone_number"],
+        };
+      }
+      return {
+        type: "QUICK_REPLY",
+        text: buttonText,
+      };
+    });
+    components.push({
+      type: "BUTTONS",
+      buttons,
+    });
+  }
+
+  return components;
+};
+
+async function handleTemplateUpdates(
+  entryId: string | null,
+  entryTime: number | null,
+  change: TemplateChange,
+) {
+  if (!isTemplateChangeField(change.field) || !change.value) return;
+
+  const wabaId = entryId ? String(entryId) : "";
+  if (!wabaId) {
+    console.error("Missing WABA id for template update");
+    return;
+  }
+
+  const { data: orgData, error: orgError } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("whatsapp_business_account_id", wabaId)
+    .single();
+
+  if (orgError || !orgData) {
+    console.error("Organization not found for WABA id:", wabaId);
+    return;
+  }
+
+  const value = change.value;
+  const externalId =
+    value["message_template_id"] !== undefined
+      ? String(value["message_template_id"])
+      : null;
+  const templateName =
+    typeof value["message_template_name"] === "string"
+      ? (value["message_template_name"] as string)
+      : null;
+  const templateLanguage = normalizeLanguage(
+    typeof value["message_template_language"] === "string"
+      ? (value["message_template_language"] as string)
+      : null,
+  );
+
+  let templateId: string | null = null;
+
+  if (externalId) {
+    const { data: templateByExternal } = await supabase
+      .from("whatsapp_templates")
+      .select("id")
+      .eq("organization_id", orgData.id)
+      .eq("external_id", externalId)
+      .maybeSingle();
+
+    templateId = templateByExternal?.id ?? null;
+  }
+
+  if (!templateId && templateName) {
+    const { data: templateMatches } = await supabase
+      .from("whatsapp_templates")
+      .select("id, language")
+      .eq("organization_id", orgData.id)
+      .eq("name", templateName);
+
+    const matched = (templateMatches || []).find((row) => {
+      const rowLanguage = normalizeLanguage(row.language as string | null);
+      if (!templateLanguage) return false;
+      return rowLanguage === templateLanguage;
+    });
+
+    templateId = matched?.id ?? null;
+  }
+
+  if (!templateId) {
+    console.error("Template not found for webhook update", {
+      externalId,
+      templateName,
+      templateLanguage,
+    });
+    return;
+  }
+
+  const eventTimestamp = entryTime
+    ? new Date(entryTime * 1000).toISOString()
+    : new Date().toISOString();
+
+  const updateData: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    last_meta_event: change as Record<string, unknown>,
+    meta_updated_at: eventTimestamp,
+  };
+
+  if (externalId) {
+    updateData.external_id = externalId;
+  }
+
+  if (templateName) {
+    updateData.name = templateName;
+  }
+
+  if (templateLanguage) {
+    updateData.language = templateLanguage;
+  }
+
+  if (change.field === "message_template_status_update") {
+    const statusValue = value["event"] ? String(value["event"]) : "PENDING";
+    updateData.status = statusValue.toLowerCase();
+    if (value["message_template_category"]) {
+      updateData.category = String(value["message_template_category"]).toUpperCase();
+    }
+  }
+
+  if (change.field === "message_template_quality_update") {
+    if (value["new_quality_score"]) {
+      updateData.quality_score = String(value["new_quality_score"]).toUpperCase();
+    }
+  }
+
+  if (change.field === "message_template_components_update") {
+    const components = buildComponentsFromTemplateUpdate(value);
+    if (components.length) {
+      updateData.components = components;
+    }
+  }
+
+  const { error } = await supabase
+    .from("whatsapp_templates")
+    .update(updateData)
+    .eq("id", templateId)
+    .eq("organization_id", orgData.id);
+
+  if (error) {
+    console.error("Error updating template from webhook:", error);
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get("hub.mode");
@@ -94,9 +314,27 @@ export async function POST(request: Request) {
       return new NextResponse("Not a WhatsApp API event", { status: 404 });
     }
 
-    const value = body.entry?.[0]?.changes?.[0]?.value as
-      | WhatsAppValue
-      | undefined;
+    const entries = Array.isArray(body.entry) ? body.entry : [];
+    let value: WhatsAppValue | undefined;
+
+    for (const entry of entries) {
+      const changes = Array.isArray(entry.changes) ? entry.changes : [];
+
+      for (const change of changes) {
+        if (isTemplateChangeField(change.field)) {
+          await handleTemplateUpdates(
+            entry.id ? String(entry.id) : null,
+            typeof entry.time === "number" ? entry.time : null,
+            change,
+          );
+          continue;
+        }
+
+        if (!value && change?.value?.metadata?.phone_number_id) {
+          value = change.value as WhatsAppValue;
+        }
+      }
+    }
 
     if (value) {
       const messages = Array.isArray(value.messages) ? [...value.messages] : [];
