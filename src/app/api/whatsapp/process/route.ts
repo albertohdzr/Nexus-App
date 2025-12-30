@@ -49,16 +49,21 @@ const sanitizeReplyText = (text: string) =>
     .replace(UUID_V4_REGEX, "[confirmacion]")
     .replace(/\*\*([^*]+)\*\*/g, "*$1*");
 
+const COSTS_REGEX = /(costos|colegiaturas|precios|cuotas|becas|descuentos)/i;
+const REQUIREMENTS_LIST_REGEX =
+  /(requisitos|documentos|papeles|lista|listado|listarlos|detalles del pdf|cu[aá]les|cuantos|cu[aá]ntas|fotograf[ií]as)/i;
+const DIRECTIONS_REGEX =
+  /(ubicaci[oó]n|direcciones|c[oó]mo llegar|mapa|maps|google maps|indicaciones|estacionamiento|acceso)/i;
+
 const enforceResponsePolicies = (reply: string, input: string) => {
   const normalizedInput = input.toLowerCase();
-  const askedCosts = /(costos|colegiaturas|precios|cuotas|becas|descuentos)/i.test(
-    normalizedInput,
-  );
+  const askedCosts = COSTS_REGEX.test(normalizedInput);
   const askedCycle = /\b(ciclo|ciclos)\b/i.test(normalizedInput);
   const askedTurn = /\b(turno|matutino|vespertino)\b/i.test(normalizedInput);
   const askedTransport = /\b(transporte|estacionamiento|auto|automovil|automóvil|acceso)\b/i.test(
     normalizedInput,
   );
+  const askedRequirementsList = REQUIREMENTS_LIST_REGEX.test(normalizedInput);
   let cleaned = reply;
 
   if (!askedCosts) {
@@ -83,6 +88,13 @@ const enforceResponsePolicies = (reply: string, input: string) => {
     );
   }
 
+  if (!askedRequirementsList) {
+    cleaned = cleaned.replace(
+      /^.*\b(pasos generales|proceso|lista|listarlos|listarlos|pdf te basta)\b.*$/gim,
+      "",
+    );
+  }
+
   cleaned = cleaned.replace(
     /^.*\b(se comunicará|se pondrá en contacto|te contactará)\b.*$/gim,
     "",
@@ -101,6 +113,17 @@ const enforceResponsePolicies = (reply: string, input: string) => {
 
   return cleaned;
 };
+
+const buildCostsVisitReply = () =>
+  "La información de costos se comparte en una visita presencial para explicarte todo a detalle. Si gustas, puedo agendarte una visita. ¿Qué días te acomodan?";
+
+const stripBulletLines = (text: string) =>
+  text
+    .split("\n")
+    .filter((line) => !/^\s*[-*]\s+/.test(line) && !/^\s*\d+[.)]\s+/.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 const splitName = (fullName: string | null | undefined) => {
   if (!fullName) {
@@ -409,6 +432,15 @@ export async function POST(request: Request) {
   let handoffRequested = chatbotReply.handoffRequested;
   let responseMessageId = chatbotReply.responseMessageId;
   let aiResponse = chatbotReply.aiResponse;
+  const askedCosts = COSTS_REGEX.test(input);
+  const askedRequirementsList = REQUIREMENTS_LIST_REGEX.test(input);
+  const askedDirections = DIRECTIONS_REGEX.test(input);
+  const usedRequirementsTool = chatbotReply.functionCalls.some(
+    (call) => call.name === "send_requirements_pdf",
+  );
+  const usedScheduleVisitTool = chatbotReply.functionCalls.some(
+    (call) => call.name === "schedule_visit",
+  );
 
   const ensureLeadForArgs = async (
     args: Record<string, unknown>,
@@ -613,6 +645,124 @@ export async function POST(request: Request) {
           name: call.name ?? null,
           call_id: callId,
           output: outputPayload,
+        });
+        continue;
+      }
+
+      if (call.name === "update_lead") {
+        const { data: existingLead } = await supabase
+          .from("leads")
+          .select("id, contact_id")
+          .eq("organization_id", organization.id)
+          .eq("wa_chat_id", chat.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!existingLead?.id) {
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "not_found" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "not_found" },
+          });
+          continue;
+        }
+
+        const contactName = String(args.contact_name || "").trim();
+        const contactPhone = String(args.contact_phone || "").trim();
+        const contactEmailRaw = String(args.contact_email || "").trim();
+        const contactEmail = (() => {
+          if (!contactEmailRaw) return null;
+          const normalized = contactEmailRaw.toLowerCase();
+          if (
+            normalized.includes("sin correo") ||
+            normalized.includes("no tengo") ||
+            normalized.includes("no cuento") ||
+            normalized === "na" ||
+            normalized === "n/a"
+          ) {
+            return null;
+          }
+          return contactEmailRaw;
+        })();
+        const studentFirstName = String(args.student_first_name || "").trim();
+        const studentLastNamePaternal = String(
+          args.student_last_name_paternal || "",
+        ).trim();
+        const gradeInterest = String(args.grade_interest || "").trim();
+        const currentSchool = String(args.current_school || "").trim();
+        const summary = String(args.summary || "").trim();
+
+        const { firstName, lastNamePaternal } = splitName(contactName);
+
+        const leadUpdates: Record<string, unknown> = {
+          updated_at: nowIso,
+        };
+        if (contactName) {
+          leadUpdates.contact_name = contactName;
+          leadUpdates.contact_first_name = firstName || null;
+          leadUpdates.contact_last_name_paternal = lastNamePaternal || null;
+        }
+        if (contactPhone) leadUpdates.contact_phone = contactPhone;
+        if (contactEmail !== null) leadUpdates.contact_email = contactEmail;
+        if (studentFirstName) leadUpdates.student_first_name = studentFirstName;
+        if (studentLastNamePaternal) {
+          leadUpdates.student_last_name_paternal = studentLastNamePaternal;
+        }
+        if (gradeInterest) leadUpdates.grade_interest = gradeInterest;
+        if (currentSchool) leadUpdates.current_school = currentSchool;
+        if (summary) leadUpdates.ai_summary = summary;
+
+        const hasUpdates = Object.keys(leadUpdates).length > 1;
+        if (hasUpdates) {
+          const { error: updateError } = await supabase
+            .from("leads")
+            .update(leadUpdates)
+            .eq("id", existingLead.id)
+            .eq("organization_id", organization.id);
+
+          if (updateError) {
+            console.error("Error updating lead", updateError);
+          }
+        }
+
+        if (existingLead.contact_id && (contactName || contactPhone || contactEmail)) {
+          const contactUpdates: Record<string, unknown> = {
+            updated_at: nowIso,
+          };
+          if (contactName) {
+            contactUpdates.first_name = firstName || null;
+            contactUpdates.last_name_paternal = lastNamePaternal || null;
+          }
+          if (contactPhone) contactUpdates.phone = contactPhone;
+          if (contactEmail !== null) contactUpdates.email = contactEmail;
+          contactUpdates.whatsapp_wa_id = chat.wa_id;
+
+          const { error: contactUpdateError } = await supabase
+            .from("crm_contacts")
+            .update(contactUpdates)
+            .eq("id", existingLead.contact_id)
+            .eq("organization_id", organization.id);
+
+          if (contactUpdateError) {
+            console.error("Error updating crm contact", contactUpdateError);
+          }
+        }
+
+        toolOutputs.push({
+          tool_call_id: callId,
+          output: JSON.stringify({
+            status: hasUpdates ? "updated" : "no_changes",
+          }),
+        });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: { status: hasUpdates ? "updated" : "no_changes" },
         });
         continue;
       }
@@ -1091,6 +1241,118 @@ export async function POST(request: Request) {
         continue;
       }
 
+      if (call.name === "cancel_visit") {
+        const { data: existingLead } = await supabase
+          .from("leads")
+          .select("id")
+          .eq("organization_id", organization.id)
+          .eq("wa_chat_id", chat.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!existingLead?.id) {
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "not_found" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "not_found" },
+          });
+          continue;
+        }
+
+        const { data: appointment } = await supabase
+          .from("appointments")
+          .select("id, slot_id, status, starts_at")
+          .eq("organization_id", organization.id)
+          .eq("lead_id", existingLead.id)
+          .eq("status", "scheduled")
+          .order("starts_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (!appointment?.id) {
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "not_found" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "not_found" },
+          });
+          continue;
+        }
+
+        const { error: cancelError } = await supabase
+          .from("appointments")
+          .update({
+            status: "cancelled",
+            updated_at: nowIso,
+          })
+          .eq("id", appointment.id)
+          .eq("organization_id", organization.id);
+
+        if (cancelError) {
+          console.error("Error cancelling appointment:", cancelError);
+          toolOutputs.push({
+            tool_call_id: callId,
+            output: JSON.stringify({ status: "failed" }),
+          });
+          await logAiEvent("tool_output", {
+            name: call.name ?? null,
+            call_id: callId,
+            output: { status: "failed" },
+          });
+          continue;
+        }
+
+        if (appointment.slot_id) {
+          const { data: slot } = await supabase
+            .from("availability_slots")
+            .select("id, appointments_count")
+            .eq("organization_id", organization.id)
+            .eq("id", appointment.slot_id)
+            .maybeSingle();
+
+          if (slot) {
+            const nextCount = Math.max((slot.appointments_count || 0) - 1, 0);
+            const { error: slotError } = await supabase
+              .from("availability_slots")
+              .update({
+                appointments_count: nextCount,
+                updated_at: nowIso,
+              })
+              .eq("id", slot.id)
+              .eq("organization_id", organization.id);
+
+            if (slotError) {
+              console.error("Error updating slot capacity:", slotError);
+            }
+          }
+        }
+
+        toolOutputs.push({
+          tool_call_id: callId,
+          output: JSON.stringify({
+            status: "cancelled",
+            starts_at: appointment.starts_at ?? null,
+          }),
+        });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: {
+            status: "cancelled",
+            starts_at: appointment.starts_at ?? null,
+          },
+        });
+        continue;
+      }
+
       if (call.name === "get_directory_contact") {
         const query = String(args.query || "").toLowerCase();
         const candidates = (directoryContacts || []).filter(
@@ -1272,6 +1534,41 @@ export async function POST(request: Request) {
         : extractResponseText(aiResponse);
       responseMessageId = getResponseMessageId(aiResponse);
     }
+  }
+
+  if (handoffRequested && askedCosts) {
+    handoffRequested = false;
+    replyText = buildCostsVisitReply();
+  }
+
+  if (usedRequirementsTool && replyText) {
+    if (!askedRequirementsList) {
+      replyText = stripBulletLines(replyText);
+    }
+    const hasVisitCTA = /\b(visita|agendar|agenda|recorrido|tour)\b/i.test(
+      replyText,
+    );
+    if (!hasVisitCTA) {
+      replyText = `${replyText}\n\nSi gustas, puedo agendarte una visita presencial. ¿Qué días te acomodan?`;
+    }
+  }
+
+  if (usedScheduleVisitTool && replyText) {
+    const hasStudentNote = /\balumno\b/i.test(replyText);
+    const hasEmailNote = /\bcorreo\b/i.test(replyText);
+    const additions = [
+      hasStudentNote ? null : "Es preferible que asista el alumno.",
+      hasEmailNote
+        ? null
+        : "Te envié las indicaciones al correo registrado.",
+    ].filter(Boolean);
+    if (additions.length) {
+      replyText = `${replyText}\n\n${additions.join(" ")}`;
+    }
+  }
+
+  if (askedDirections && replyText && !replyText.includes("maps.app.goo.gl")) {
+    replyText = `${replyText}\n\nUbicación: https://maps.app.goo.gl/i8RbN6y2og8AuLwXA`;
   }
 
   if (!replyText || !replyText.trim()) {

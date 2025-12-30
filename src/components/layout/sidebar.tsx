@@ -48,6 +48,7 @@ import {
     Files,
     CreditCard,
     Plus,
+    FileText,
     LucideIcon
 } from "lucide-react"
 
@@ -129,6 +130,12 @@ export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) 
             url: `/finance`,
             icon: CreditCard,
             isActive: isPathActive("/finance"),
+        },
+        {
+            title: "AI Logs",
+            url: `/ai-audit`,
+            icon: FileText,
+            isActive: isPathActive("/ai-audit"),
         },
         {
             title: "Settings",

@@ -1,14 +1,20 @@
 import OpenAI from "openai";
+import type {
+  FileSearchTool,
+  Tool,
+} from "openai/resources/responses/responses";
 
 type ReasoningEffort = "low" | "medium" | "high";
 
-type ResponseTool = {
-  type: "function";
-  name: string;
-  description?: string;
-  parameters?: Record<string, unknown> | null;
+type FunctionTool = Omit<
+  Extract<Tool, { type: "function" }>,
+  "strict" | "parameters"
+> & {
   strict?: boolean;
+  parameters?: Record<string, unknown> | null;
 };
+
+type ResponseTool = FunctionTool | FileSearchTool;
 
 type CreateResponseOptions = {
   input: string;
@@ -60,12 +66,16 @@ const createResponse = async ({
     input,
     ...(tools?.length
       ? {
-        tools: tools.map((tool) => ({
-          ...tool,
-          strict: tool.strict ?? true,
-          parameters: tool.parameters ?? {},
-        })),
-      }
+          tools: tools.map((tool) =>
+            tool.type === "function"
+              ? {
+                  ...tool,
+                  strict: tool.strict ?? true,
+                  parameters: tool.parameters ?? {},
+                }
+              : tool,
+          ),
+        }
       : {}),
     ...(conversationId ? { conversation: conversationId } : {}),
   });

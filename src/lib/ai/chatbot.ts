@@ -78,6 +78,7 @@ REGLA: SIEMPRE REGISTRAR LEAD (SIN CONFIRMACIÓN)
 - Después de crear el lead, confirma con una frase corta: “Listo, ya quedó tu registro 😊”.
 - Después del registro, ofrece agendar una visita presencial.
 - No digas que Admisiones contactará “en breve”; tú das el seguimiento salvo que haya handoff.
+- Si el usuario corrige o agrega datos, usa update_lead en vez de crear uno nuevo.
 
 DETECCIÓN DE INTENCIÓN (GUÍA)
 - “Informes / inscripciones / admisiones / quiero meter a mi hijo / requisitos / cupo / me interesa” => FLUJO LEAD (y si piden requisitos, también FLUJO REQUISITOS).
@@ -137,8 +138,9 @@ Objetivo: enviar por WhatsApp el PDF correcto de requisitos según la división.
 - Si el usuario menciona una división (ej. Primaria/Elementary/Secundaria/Preparatoria), úsala sin volver a preguntar.
 - Si el usuario ya dio el grado/nivel (o está en el contexto del lead), intenta inferir la división sin volver a preguntar.
 - Cuando tengas la división, usa send_requirements_pdf inmediatamente.
-- Después de enviar, responde con una confirmación corta (sin IDs) y ofrece ayuda para agendar visita.
-- Si el usuario no pidió otra cosa, pregunta directamente si desea agendar una visita presencial.
+- Después de enviar, responde con una confirmación corta (sin IDs) y pregunta si desea agendar una visita presencial.
+- NO ofrezcas listar requisitos ni pasos/proceso general a menos que el usuario lo pida explícitamente.
+- Si el usuario pide que le listes requisitos o aclaraciones del PDF, usa file_search antes de responder.
 - NO hagas preguntas sobre requisitos específicos (documentos, casos, excepciones) ni sobre proceso de admisión.
 - Si el usuario cambia de división y contradice un grado/nivel ya indicado, confirma con una sola pregunta corta (ej. “¿Entonces sería Preparatoria y no 1° de primaria?”).
 
@@ -177,6 +179,13 @@ HERRAMIENTAS DISPONIBLES Y CÓMO USARLAS
 - Úsala cuando el usuario pida hablar con alguien específico (caja, admisiones, etc.).
 
 6) create_complaint
+
+7) update_lead
+- Úsala cuando el usuario proporcione datos nuevos o correcciones de un lead existente.
+- Solo actualiza los campos que el usuario indicó.
+
+8) cancel_visit
+- Úsala cuando el usuario solicite cancelar su cita.
 - Úsala cuando el usuario quiera levantar una queja/reporte.
 
 SEGUIMIENTO DE LEAD ACTIVO
@@ -468,6 +477,73 @@ const SEND_REQUIREMENTS_PDF_TOOL: ResponseTool = {
   strict: true,
 };
 
+const UPDATE_LEAD_TOOL: ResponseTool = {
+  type: "function",
+  name: "update_lead",
+  description:
+    "Actualiza un lead existente con información nueva o corregida del usuario.",
+  parameters: {
+    type: "object",
+    properties: {
+      contact_name: {
+        type: ["string", "null"],
+        description: "Nombre completo del contacto/padre/tutor.",
+      },
+      contact_phone: {
+        type: ["string", "null"],
+        description:
+          "Teléfono de contacto (10 dígitos o +52). Acepta espacios o guiones.",
+      },
+      contact_email: {
+        type: ["string", "null"],
+        description: "Correo electrónico del contacto.",
+      },
+      student_first_name: {
+        type: ["string", "null"],
+        description: "Nombre del estudiante.",
+      },
+      student_last_name_paternal: {
+        type: ["string", "null"],
+        description: "Apellido paterno del estudiante.",
+      },
+      grade_interest: {
+        type: ["string", "null"],
+        description: "Grado o nivel al que desea inscribirse.",
+      },
+      current_school: {
+        type: ["string", "null"],
+        description: "Escuela actual del estudiante.",
+      },
+      summary: {
+        type: ["string", "null"],
+        description:
+          "Resumen breve del cambio o lo solicitado por el usuario.",
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  strict: true,
+};
+
+const CANCEL_VISIT_TOOL: ResponseTool = {
+  type: "function",
+  name: "cancel_visit",
+  description: "Cancela la cita de admisiones más próxima del lead.",
+  parameters: {
+    type: "object",
+    properties: {
+      reason: {
+        type: ["string", "null"],
+        description: "Motivo de cancelación si el usuario lo comparte.",
+      },
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  strict: true,
+};
+
 const LIST_AVAILABLE_APPOINTMENTS_TOOL: ResponseTool = {
   type: "function",
   name: "list_available_appointments",
@@ -616,6 +692,9 @@ const generateChatbotReply = async ({
   logger,
 }: GenerateChatbotReplyArgs): Promise<ChatbotReply> => {
   const tools: ResponseTool[] = [...HANDOFF_TOOL, CREATE_LEAD_TOOL];
+  const vectorStoreId =
+    process.env.OPENAI_VECTOR_STORE_ID ||
+    "vs_6951a395b2508191b48d612195c88947";
 
   const hasDirectoryContacts = Boolean(
     context.botDirectoryEnabled &&
@@ -628,9 +707,18 @@ const generateChatbotReply = async ({
   }
   tools.push(CREATE_COMPLAINT_TOOL);
   tools.push(SEND_REQUIREMENTS_PDF_TOOL);
+  tools.push(UPDATE_LEAD_TOOL);
+  if (vectorStoreId) {
+    tools.push({
+      type: "file_search",
+      vector_store_ids: [vectorStoreId],
+      max_num_results: 5,
+    });
+  }
   if (context.appointmentsEnabled) {
     tools.push(LIST_AVAILABLE_APPOINTMENTS_TOOL);
     tools.push(SCHEDULE_VISIT_TOOL);
+    tools.push(CANCEL_VISIT_TOOL);
   }
 
   /*const resolvedBotInstructions = (context.botInstructions || "")
@@ -667,7 +755,9 @@ const generateChatbotReply = async ({
         conversation_id: conversationId,
         model,
         instructions,
-        tools: tools.map((tool) => tool.name),
+        tools: tools.map((tool) =>
+          tool.type === "function" ? tool.name : tool.type
+        ),
       },
     });
 
