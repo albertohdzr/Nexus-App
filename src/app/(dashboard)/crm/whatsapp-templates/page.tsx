@@ -896,7 +896,7 @@ export default function WhatsAppTemplatesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Ultimo evento</Label>
-                <pre className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground overflow-auto">
+                <pre className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground overflow-auto whitespace-pre-wrap break-words">
                   {activeTemplate?.last_meta_event
                     ? JSON.stringify(activeTemplate.last_meta_event, null, 2)
                     : "Sin eventos registrados."}
@@ -958,7 +958,7 @@ export default function WhatsAppTemplatesPage() {
                     </Button>
                   ) : null}
                 </div>
-                <pre className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground overflow-auto">
+                <pre className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground overflow-auto whitespace-pre-wrap break-words">
                   {createPayload
                     ? JSON.stringify(createPayload, null, 2)
                     : "Completa el editor para generar el payload."}
@@ -979,7 +979,7 @@ export default function WhatsAppTemplatesPage() {
                     </Button>
                   ) : null}
                 </div>
-                <pre className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground overflow-auto">
+                <pre className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground overflow-auto whitespace-pre-wrap break-words">
                   {sendPayload
                     ? JSON.stringify(sendPayload, null, 2)
                     : "Completa el editor para generar el payload."}
