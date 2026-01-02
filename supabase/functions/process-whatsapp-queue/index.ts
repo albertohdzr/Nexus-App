@@ -6,7 +6,6 @@ const WAIT_TIME_MS = 5000;
 // Usa SERVICE_ROLE_KEY para tener permisos de borrado/update
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const appBaseUrl = "http://host.docker.internal:3000";
 
 Deno.serve(async (req) => {
   const { chat_id } = await req.json();
@@ -66,14 +65,25 @@ Deno.serve(async (req) => {
   console.log(`🚀 ENVIANDO A API FINAL: "${finalMessage}"`);
   console.log("-----------------------------------------");
 
+  const appBaseUrl = Deno.env.get("APP_BASE_URL");
+  const cronSecret = Deno.env.get("CRON_SECRET");
+
   if (!appBaseUrl) {
-    console.error("Missing NEXT_PUBLIC_APP_URL/APP_BASE_URL for API call.");
+    console.error("Missing APP_BASE_URL for API call.");
     return new Response("Missing app base url", { status: 500 });
+  }
+
+  if (!cronSecret) {
+    console.error("Missing CRON_SECRET for API call.");
+    return new Response("Missing cron secret", { status: 500 });
   }
 
   const response = await fetch(`${appBaseUrl}/api/whatsapp/process`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${cronSecret}`,
+    },
     body: JSON.stringify({
       chat_id,
       final_message: finalMessage,

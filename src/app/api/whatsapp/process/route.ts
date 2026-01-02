@@ -23,6 +23,7 @@ type ProcessRequest = {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const whatsappAccessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+const cronSecret = process.env.CRON_SECRET;
 
 const ACTIVE_STATUSES = new Set(["active"]);
 const INACTIVE_LEAD_STATUSES = new Set(["lost", "enrolled"]);
@@ -60,9 +61,10 @@ const enforceResponsePolicies = (reply: string, input: string) => {
   const askedCosts = COSTS_REGEX.test(normalizedInput);
   const askedCycle = /\b(ciclo|ciclos)\b/i.test(normalizedInput);
   const askedTurn = /\b(turno|matutino|vespertino)\b/i.test(normalizedInput);
-  const askedTransport = /\b(transporte|estacionamiento|auto|automovil|automóvil|acceso)\b/i.test(
-    normalizedInput,
-  );
+  const askedTransport =
+    /\b(transporte|estacionamiento|auto|automovil|automóvil|acceso)\b/i.test(
+      normalizedInput,
+    );
   const askedRequirementsList = REQUIREMENTS_LIST_REGEX.test(normalizedInput);
   let cleaned = reply;
 
@@ -164,6 +166,15 @@ export async function POST(request: Request) {
     return new NextResponse("WHATSAPP_ACCESS_TOKEN missing", { status: 500 });
   }
 
+  if (!cronSecret) {
+    return new NextResponse("CRON_SECRET missing", { status: 500 });
+  }
+
+  const authHeader = request.headers.get("Authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
   let payload: ProcessRequest;
   try {
     payload = await request.json();
@@ -172,8 +183,7 @@ export async function POST(request: Request) {
   }
 
   const chatId = payload.chat_id;
-  const input =
-    payload.final_message || payload.message || payload.text || "";
+  const input = payload.final_message || payload.message || payload.text || "";
 
   if (!chatId || !input.trim()) {
     return new NextResponse("Missing chat_id or message", { status: 400 });
@@ -186,7 +196,7 @@ export async function POST(request: Request) {
   const { data: chat, error: chatError } = await supabase
     .from("chats")
     .select(
-      "id, wa_id, phone_number, organization_id, active_session_id, requested_handoff"
+      "id, wa_id, phone_number, organization_id, active_session_id, requested_handoff",
     )
     .eq("id", chatId)
     .single();
@@ -203,7 +213,7 @@ export async function POST(request: Request) {
   const { data: organization, error: orgError } = await supabase
     .from("organizations")
     .select(
-      "id, name, phone_number_id, bot_name, bot_instructions, bot_tone, bot_language, bot_model, bot_directory_enabled"
+      "id, name, phone_number_id, bot_name, bot_instructions, bot_tone, bot_language, bot_model, bot_directory_enabled",
     )
     .eq("id", chat.organization_id)
     .single();
@@ -239,16 +249,18 @@ export async function POST(request: Request) {
   }
 
   if (!organization.phone_number_id) {
-    return new NextResponse("Organization missing phone_number_id", { status: 500 });
+    return new NextResponse("Organization missing phone_number_id", {
+      status: 500,
+    });
   }
 
   let session = null as
     | {
-        id: string;
-        status: string | null;
-        ai_enabled: boolean | null;
-        conversation_id: string | null;
-      }
+      id: string;
+      status: string | null;
+      ai_enabled: boolean | null;
+      conversation_id: string | null;
+    }
     | null;
 
   if (chat.active_session_id) {
@@ -345,7 +357,10 @@ export async function POST(request: Request) {
       .eq("id", session.id);
 
     if (updateSessionError) {
-      console.error("Failed to attach conversation to session", updateSessionError);
+      console.error(
+        "Failed to attach conversation to session",
+        updateSessionError,
+      );
     }
 
     session = {
@@ -357,7 +372,7 @@ export async function POST(request: Request) {
   const { data: lead } = await supabase
     .from("leads")
     .select(
-      "id, status, contact_name, contact_full_name, contact_first_name, contact_last_name_paternal, contact_email, contact_phone, student_first_name, student_last_name_paternal, grade_interest, school_year, current_school"
+      "id, status, contact_name, contact_full_name, contact_first_name, contact_last_name_paternal, contact_email, contact_phone, student_first_name, student_last_name_paternal, grade_interest, school_year, current_school",
     )
     .eq("wa_chat_id", chat.id)
     .order("updated_at", { ascending: false })
@@ -373,7 +388,7 @@ export async function POST(request: Request) {
   const { data: directoryContacts } = await supabase
     .from("directory_contacts")
     .select(
-      "role_slug, display_role, name, email, phone, extension, mobile, allow_bot_share, share_email, share_phone, share_extension, share_mobile"
+      "role_slug, display_role, name, email, phone, extension, mobile, allow_bot_share, share_email, share_phone, share_extension, share_mobile",
     )
     .eq("organization_id", organization.id)
     .eq("is_active", true);
@@ -385,20 +400,19 @@ export async function POST(request: Request) {
 
   const leadProfile = lead
     ? {
-        contact_name:
-          lead.contact_full_name ||
-          lead.contact_name ||
-          [lead.contact_first_name, lead.contact_last_name_paternal]
-            .filter(Boolean)
-            .join(" ") ||
-          null,
-        contact_phone: lead.contact_phone || null,
-        contact_email: lead.contact_email || null,
-        student_first_name: lead.student_first_name || null,
-        student_last_name_paternal: lead.student_last_name_paternal || null,
-        grade_interest: lead.grade_interest || null,
-        current_school: lead.current_school || null,
-      }
+      contact_name: lead.contact_full_name ||
+        lead.contact_name ||
+        [lead.contact_first_name, lead.contact_last_name_paternal]
+          .filter(Boolean)
+          .join(" ") ||
+        null,
+      contact_phone: lead.contact_phone || null,
+      contact_email: lead.contact_email || null,
+      student_first_name: lead.student_first_name || null,
+      student_last_name_paternal: lead.student_last_name_paternal || null,
+      grade_interest: lead.grade_interest || null,
+      current_school: lead.current_school || null,
+    }
     : null;
 
   const chatbotReply = await generateChatbotReply({
@@ -468,7 +482,8 @@ export async function POST(request: Request) {
     ).trim();
     const gradeInterest = String(args.grade_interest || "").trim();
     const currentSchool = String(args.current_school || "").trim() || null;
-    const summary = String(args.summary || "").trim() || "Solicitud de admisiones";
+    const summary = String(args.summary || "").trim() ||
+      "Solicitud de admisiones";
     const source = String(args.source || "whatsapp").trim();
 
     if (
@@ -545,16 +560,16 @@ export async function POST(request: Request) {
     if (existingLead?.id) {
       const { error: updateError } = await supabase
         .from("leads")
-      .update({
-        contact_id: contactId,
-        contact_name: contactName,
-        contact_first_name: firstName || null,
-        contact_last_name_paternal: lastNamePaternal || null,
-        ...(contactEmail ? { contact_email: contactEmail } : {}),
-        contact_phone: contactPhone,
-        student_first_name: studentFirstName,
-        student_last_name_paternal: studentLastNamePaternal,
-        grade_interest: gradeInterest,
+        .update({
+          contact_id: contactId,
+          contact_name: contactName,
+          contact_first_name: firstName || null,
+          contact_last_name_paternal: lastNamePaternal || null,
+          ...(contactEmail ? { contact_email: contactEmail } : {}),
+          contact_phone: contactPhone,
+          student_first_name: studentFirstName,
+          student_last_name_paternal: studentLastNamePaternal,
+          grade_interest: gradeInterest,
           current_school: currentSchool,
           source,
           wa_chat_id: chat.id,
@@ -730,7 +745,10 @@ export async function POST(request: Request) {
           }
         }
 
-        if (existingLead.contact_id && (contactName || contactPhone || contactEmail)) {
+        if (
+          existingLead.contact_id &&
+          (contactName || contactPhone || contactEmail)
+        ) {
           const contactUpdates: Record<string, unknown> = {
             updated_at: nowIso,
           };
@@ -823,8 +841,7 @@ export async function POST(request: Request) {
           continue;
         }
 
-        const bucket =
-          document.storage_bucket ||
+        const bucket = document.storage_bucket ||
           process.env.SUPABASE_MEDIA_BUCKET ||
           "whatsapp-media";
 
@@ -847,8 +864,7 @@ export async function POST(request: Request) {
         }
 
         const mimeType = document.mime_type || "application/pdf";
-        const fileName =
-          document.file_name ||
+        const fileName = document.file_name ||
           `requisitos-${normalizedDivision}.pdf`;
 
         const { mediaId, error: uploadError } = await uploadWhatsAppMedia({
@@ -904,22 +920,27 @@ export async function POST(request: Request) {
             caption: document.title || null,
           };
 
-          const { error: insertError } = await supabase.from("messages").insert({
-            chat_id: chat.id,
-            chat_session_id: session.id,
-            wa_message_id: messageId,
-            body: document.title || fileName,
-            type: "document",
-            status: "sent",
-            sent_at: nowIso,
-            sender_name: organization.bot_name || "Bot",
-            payload: payloadData,
-            response_id: null,
-            created_at: nowIso,
-          });
+          const { error: insertError } = await supabase.from("messages").insert(
+            {
+              chat_id: chat.id,
+              chat_session_id: session.id,
+              wa_message_id: messageId,
+              body: document.title || fileName,
+              type: "document",
+              status: "sent",
+              sent_at: nowIso,
+              sender_name: organization.bot_name || "Bot",
+              payload: payloadData,
+              response_id: null,
+              created_at: nowIso,
+            },
+          );
 
           if (insertError) {
-            console.error("Error inserting requirements document message:", insertError);
+            console.error(
+              "Error inserting requirements document message:",
+              insertError,
+            );
           }
         }
 
@@ -1023,14 +1044,16 @@ export async function POST(request: Request) {
             starts_at: slot.starts_at,
             ends_at: slot.ends_at,
             campus: slot.campus,
-            remaining_capacity:
-              typeof slot.max_appointments === "number" &&
-              typeof slot.appointments_count === "number"
-                ? slot.max_appointments - slot.appointments_count
-                : null,
+            remaining_capacity: typeof slot.max_appointments === "number" &&
+                typeof slot.appointments_count === "number"
+              ? slot.max_appointments - slot.appointments_count
+              : null,
           }));
 
-        const outputSlots = availableSlots.slice(0, Math.min(5, availableSlots.length));
+        const outputSlots = availableSlots.slice(
+          0,
+          Math.min(5, availableSlots.length),
+        );
 
         toolOutputs.push({
           tool_call_id: callId,
@@ -1071,20 +1094,20 @@ export async function POST(request: Request) {
             !studentLastNamePaternal ||
             !gradeInterest
           ) {
-          toolOutputs.push({
-            tool_call_id: callId,
-            output: JSON.stringify({
-              status: "failed",
-              error: "missing_lead_fields",
-            }),
-          });
-          await logAiEvent("tool_output", {
-            name: call.name ?? null,
-            call_id: callId,
-            output: { status: "failed", error: "missing_lead_fields" },
-          });
-          continue;
-        }
+            toolOutputs.push({
+              tool_call_id: callId,
+              output: JSON.stringify({
+                status: "failed",
+                error: "missing_lead_fields",
+              }),
+            });
+            await logAiEvent("tool_output", {
+              name: call.name ?? null,
+              call_id: callId,
+              output: { status: "failed", error: "missing_lead_fields" },
+            });
+            continue;
+          }
 
           const leadResult = await ensureLeadForArgs({
             ...args,
@@ -1143,8 +1166,7 @@ export async function POST(request: Request) {
           console.error("Error fetching availability slot", slotError);
         }
 
-        const slotUnavailable =
-          !slot ||
+        const slotUnavailable = !slot ||
           typeof slot.appointments_count !== "number" ||
           typeof slot.max_appointments !== "number" ||
           slot.appointments_count >= slot.max_appointments;
@@ -1359,7 +1381,8 @@ export async function POST(request: Request) {
           (contact) => contact.allow_bot_share,
         );
         const match = candidates.find((contact) => {
-          const role = (contact.display_role || contact.role_slug || "").toLowerCase();
+          const role = (contact.display_role || contact.role_slug || "")
+            .toLowerCase();
           const name = (contact.name || "").toLowerCase();
           return role.includes(query) || name.includes(query);
         });
@@ -1369,22 +1392,6 @@ export async function POST(request: Request) {
           output: JSON.stringify(
             match
               ? {
-                  status: "ok",
-                  name: match.name,
-                  role: match.display_role,
-                  email: match.share_email ? match.email : null,
-                  phone: match.share_phone ? match.phone : null,
-                  extension: match.share_extension ? match.extension : null,
-                  mobile: match.share_mobile ? match.mobile : null,
-                }
-              : { status: "not_found" },
-          ),
-        });
-        await logAiEvent("tool_output", {
-          name: call.name ?? null,
-          call_id: callId,
-          output: match
-            ? {
                 status: "ok",
                 name: match.name,
                 role: match.display_role,
@@ -1393,6 +1400,22 @@ export async function POST(request: Request) {
                 extension: match.share_extension ? match.extension : null,
                 mobile: match.share_mobile ? match.mobile : null,
               }
+              : { status: "not_found" },
+          ),
+        });
+        await logAiEvent("tool_output", {
+          name: call.name ?? null,
+          call_id: callId,
+          output: match
+            ? {
+              status: "ok",
+              name: match.name,
+              role: match.display_role,
+              email: match.share_email ? match.email : null,
+              phone: match.share_phone ? match.phone : null,
+              extension: match.share_extension ? match.extension : null,
+              mobile: match.share_mobile ? match.mobile : null,
+            }
             : { status: "not_found" },
         });
         continue;
@@ -1437,13 +1460,13 @@ export async function POST(request: Request) {
           output: JSON.stringify(
             finance
               ? {
-                  status: "ok",
-                  item: finance.item,
-                  value: finance.value,
-                  notes: finance.notes,
-                  valid_from: finance.valid_from,
-                  valid_to: finance.valid_to,
-                }
+                status: "ok",
+                item: finance.item,
+                value: finance.value,
+                notes: finance.notes,
+                valid_from: finance.valid_from,
+                valid_to: finance.valid_to,
+              }
               : { status: "not_found" },
           ),
         });
@@ -1452,13 +1475,13 @@ export async function POST(request: Request) {
           call_id: callId,
           output: finance
             ? {
-                status: "ok",
-                item: finance.item,
-                value: finance.value,
-                notes: finance.notes,
-                valid_from: finance.valid_from,
-                valid_to: finance.valid_to,
-              }
+              status: "ok",
+              item: finance.item,
+              value: finance.value,
+              notes: finance.notes,
+              valid_from: finance.valid_from,
+              valid_to: finance.valid_to,
+            }
             : { status: "not_found" },
         });
         continue;
@@ -1549,7 +1572,8 @@ export async function POST(request: Request) {
       replyText,
     );
     if (!hasVisitCTA) {
-      replyText = `${replyText}\n\nSi gustas, puedo agendarte una visita presencial. ¿Qué días te acomodan?`;
+      replyText =
+        `${replyText}\n\nSi gustas, puedo agendarte una visita presencial. ¿Qué días te acomodan?`;
     }
   }
 
@@ -1558,9 +1582,7 @@ export async function POST(request: Request) {
     const hasEmailNote = /\bcorreo\b/i.test(replyText);
     const additions = [
       hasStudentNote ? null : "Es preferible que asista el alumno.",
-      hasEmailNote
-        ? null
-        : "Te envié las indicaciones al correo registrado.",
+      hasEmailNote ? null : "Te envié las indicaciones al correo registrado.",
     ].filter(Boolean);
     if (additions.length) {
       replyText = `${replyText}\n\n${additions.join(" ")}`;
@@ -1568,7 +1590,8 @@ export async function POST(request: Request) {
   }
 
   if (askedDirections && replyText && !replyText.includes("maps.app.goo.gl")) {
-    replyText = `${replyText}\n\nUbicación: https://maps.app.goo.gl/i8RbN6y2og8AuLwXA`;
+    replyText =
+      `${replyText}\n\nUbicación: https://maps.app.goo.gl/i8RbN6y2og8AuLwXA`;
   }
 
   if (!replyText || !replyText.trim()) {
@@ -1617,9 +1640,7 @@ export async function POST(request: Request) {
     .update({
       last_response_at: nowIso,
       updated_at: nowIso,
-      ...(handoffRequested
-        ? { ai_enabled: false, status: "handover" }
-        : null),
+      ...(handoffRequested ? { ai_enabled: false, status: "handover" } : null),
     })
     .eq("id", session.id);
 
