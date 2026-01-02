@@ -108,6 +108,27 @@ export async function createOrganizationAction(formData: FormData) {
     return { error: "Server configuration error: Missing service role key" }
   }
 
+  const { error: seedError } = await supabaseAdmin.rpc("seed_org_roles", {
+    p_org_id: org.id,
+  })
+
+  if (seedError) {
+    console.error("Role seed error:", seedError)
+    return { error: "Failed to seed organization roles" }
+  }
+
+  const { data: orgAdminRole, error: roleError } = await supabaseAdmin
+    .from("roles")
+    .select("id, slug")
+    .eq("organization_id", org.id)
+    .eq("slug", "org_admin")
+    .single()
+
+  if (roleError || !orgAdminRole) {
+    console.error("Org admin role not found:", roleError)
+    return { error: "Failed to resolve org admin role" }
+  }
+
   const tempPassword = Math.random().toString(36).slice(-8) + "Aa1!" // Simple temp password
 
   const { data: adminUser, error: userError } = await supabaseAdmin.auth.admin.createUser({
@@ -140,7 +161,8 @@ export async function createOrganizationAction(formData: FormData) {
             last_name_maternal: parsedName.last_name_maternal,
             email: adminEmail,
             organization_id: org.id,
-            role: "org_admin",
+            role: orgAdminRole.slug,
+            role_id: orgAdminRole.id,
             force_password_change: true,
         })
 

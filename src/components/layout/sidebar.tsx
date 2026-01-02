@@ -51,6 +51,8 @@ import {
     FileText,
     LucideIcon
 } from "lucide-react"
+import { useUser } from "@/src/components/providers/auth-provider"
+import { hasPermission } from "@/src/lib/permissions"
 
 interface NavItem {
     title: string;
@@ -58,20 +60,24 @@ interface NavItem {
     icon: LucideIcon;
     isActive: boolean;
     id?: string;
+    module?: string;
+    action?: string;
     children?: {
         title: string;
         url: string;
         icon?: LucideIcon;
+        module?: string;
+        action?: string;
     }[];
 }
 
 interface SidebarProps extends React.ComponentProps<typeof SidebarPrimitive> {
     organizationSlug: string
-    userRole?: string | null
 }
 
-export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) {
+export function Sidebar({ organizationSlug, ...props }: SidebarProps) {
     const pathname = usePathname()
+    const { permissions, roleSlug } = useUser()
     
     // Helper to check if a path is active
     const isPathActive = (path: string) => pathname.includes(path)
@@ -79,7 +85,8 @@ export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) 
     // State for expanded items
     const [expandedItems, setExpandedItems] = React.useState<string[]>([
         "crm",
-        "admissions"
+        "admissions",
+        "settings",
     ])
 
     const toggleItem = (id: string) => {
@@ -101,11 +108,14 @@ export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) 
             icon: Users,
             id: "crm",
             isActive: isPathActive("/crm"),
+            module: "crm",
             children: [
-                { title: "Overview", url: `/crm`, icon: LayoutDashboard },
-                { title: "Leads", url: `/crm/leads`, icon: Contact },
-                { title: "Appointments", url: `/crm/appointments`, icon: Calendar },
-                { title: "Templates", url: `/crm/templates`, icon: Mail },
+                { title: "Overview", url: `/crm`, icon: LayoutDashboard, module: "crm" },
+                { title: "Leads", url: `/crm/leads`, icon: Contact, module: "crm" },
+                { title: "Calendar", url: `/crm/calendar`, icon: Calendar, module: "crm", action: "manage_appointments" },
+                { title: "Appointments", url: `/crm/appointments`, icon: Calendar, module: "crm", action: "manage_appointments" },
+                { title: "Templates", url: `/crm/templates`, icon: Mail, module: "crm", action: "manage_templates" },
+                { title: "WhatsApp", url: `/crm/whatsapp-templates`, icon: MessageSquare, module: "crm", action: "manage_whatsapp_templates" },
             ]
         },
         {
@@ -113,16 +123,18 @@ export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) 
             url: `/chat`,
             icon: MessageSquare,
             isActive: isPathActive("/chat"),
+            module: "crm",
         },
         {
             title: "Admissions",
             icon: GraduationCap,
             id: "admissions",
             isActive: isPathActive("/admissions"),
+            module: "admissions",
             children: [
-                { title: "Overview", url: `/admissions`, icon: LayoutDashboard },
-                { title: "Cycles", url: `/admissions/cycles`, icon: Plus },
-                { title: "Documents", url: `/admissions/documents`, icon: Files },
+                { title: "Overview", url: `/admissions`, icon: LayoutDashboard, module: "admissions" },
+                { title: "Cycles", url: `/admissions/cycles`, icon: Plus, module: "admissions" },
+                { title: "Documents", url: `/admissions/documents`, icon: Files, module: "admissions" },
             ]
         },
         {
@@ -130,35 +142,58 @@ export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) 
             url: `/finance`,
             icon: CreditCard,
             isActive: isPathActive("/finance"),
+            module: "finance",
         },
         {
             title: "AI Logs",
             url: `/ai-audit`,
             icon: FileText,
             isActive: isPathActive("/ai-audit"),
+            module: "ai_audit",
         },
         {
             title: "Settings",
             url: `/settings`,
             icon: Settings,
+            id: "settings",
             isActive: isPathActive("/settings"),
+            module: "settings",
              children: [
-                { title: "General", url: `/settings`, icon: Settings },
-                { title: "Directory", url: `/settings/directory`, icon: Users },
-                { title: "Bot", url: `/settings/bot`, icon: MessageSquare },
+                { title: "General", url: `/settings`, icon: Settings, module: "settings", action: "manage_org" },
+                { title: "Team", url: `/settings/team`, icon: Users, module: "settings", action: "manage_team" },
+                { title: "Roles & Permissions", url: `/settings/roles`, icon: Shield, module: "settings", action: "manage_roles" },
+                { title: "Directory", url: `/settings/directory`, icon: Users, module: "settings", action: "manage_directory" },
+                { title: "Bot", url: `/settings/bot`, icon: MessageSquare, module: "settings", action: "manage_bot" },
             ]
         },
     ]
 
     // Add Superadmin link if applicable
-    if (userRole === "superadmin") {
+    if (roleSlug === "superadmin") {
         navItems.push({
             title: "Superadmin",
             url: "/superadmin",
             icon: Shield,
             isActive: pathname.includes("/superadmin"),
+            module: "superadmin",
         })
     }
+
+    const canSeeItem = (item: { module?: string; action?: string }) => {
+        if (!item.module) return true
+        return hasPermission(permissions, item.module, item.action || "access", roleSlug)
+    }
+
+    const visibleNavItems = navItems
+        .map((item) => {
+            if (!item.children?.length) return item
+            const visibleChildren = item.children.filter(canSeeItem)
+            return { ...item, children: visibleChildren }
+        })
+        .filter((item) => {
+            if (item.children?.length) return canSeeItem(item) || item.children.length > 0
+            return canSeeItem(item)
+        })
 
     const renderNavItem = (item: NavItem) => {
         const hasChildren = item.children && item.children.length > 0
@@ -257,7 +292,7 @@ export function Sidebar({ organizationSlug, userRole, ...props }: SidebarProps) 
                 <SidebarGroup className="p-0">
                     <SidebarGroupContent>
                         <SidebarMenu>
-                             {navItems.map(renderNavItem)}
+                             {visibleNavItems.map(renderNavItem)}
                         </SidebarMenu>
                     </SidebarGroupContent>
                 </SidebarGroup>

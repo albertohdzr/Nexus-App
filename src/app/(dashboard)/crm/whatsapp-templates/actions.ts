@@ -2,6 +2,7 @@
 
 import { createClient } from "@/src/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { checkPermission } from "@/src/lib/permissions-server";
 
 export type WhatsAppTemplatePayload = {
   id?: string;
@@ -26,7 +27,7 @@ export async function upsertWhatsAppTemplate(payload: WhatsAppTemplatePayload) {
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("organization_id, role")
+    .select("organization_id")
     .eq("id", user.id)
     .single();
 
@@ -34,7 +35,8 @@ export async function upsertWhatsAppTemplate(payload: WhatsAppTemplatePayload) {
     return { error: "Organization not found" };
   }
 
-  if (profile.role !== "superadmin" && profile.role !== "org_admin") {
+  const allowed = await checkPermission(supabase, user.id, "crm", "manage_whatsapp_templates");
+  if (!allowed) {
     return { error: "Insufficient permissions" };
   }
 
@@ -101,7 +103,7 @@ export async function deleteWhatsAppTemplate(templateId: string) {
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("organization_id, role")
+    .select("organization_id")
     .eq("id", user.id)
     .single();
 
@@ -109,7 +111,8 @@ export async function deleteWhatsAppTemplate(templateId: string) {
     return { error: "Organization not found" };
   }
 
-  if (profile.role !== "superadmin" && profile.role !== "org_admin") {
+  const allowed = await checkPermission(supabase, user.id, "crm", "manage_whatsapp_templates");
+  if (!allowed) {
     return { error: "Insufficient permissions" };
   }
 
@@ -140,7 +143,7 @@ export async function syncWhatsAppTemplateToMeta(templateId: string) {
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("organization_id, role")
+    .select("organization_id")
     .eq("id", user.id)
     .single();
 
@@ -148,7 +151,8 @@ export async function syncWhatsAppTemplateToMeta(templateId: string) {
     return { error: "Organization not found" };
   }
 
-  if (profile.role !== "superadmin" && profile.role !== "org_admin") {
+  const allowed = await checkPermission(supabase, user.id, "crm", "manage_whatsapp_templates");
+  if (!allowed) {
     return { error: "Insufficient permissions" };
   }
 

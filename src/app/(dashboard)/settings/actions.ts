@@ -2,13 +2,33 @@
 
 import { createClient } from "@/src/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { checkPermission, getProfileWithRole } from "@/src/lib/permissions-server";
 
-export async function updateOrganization(formData: FormData) {
+async function getSettingsContext(action: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Unauthorized" };
+    return { error: "Unauthorized", supabase: null, profile: null };
+  }
+
+  const { profile, error } = await getProfileWithRole(supabase, user.id);
+  if (error || !profile?.organization_id) {
+    return { error: "No se encontró tu organización", supabase: null, profile: null };
+  }
+
+  const allowed = await checkPermission(supabase, user.id, "settings", action);
+  if (!allowed) {
+    return { error: "Insufficient permissions", supabase: null, profile: null };
+  }
+
+  return { supabase, profile, user };
+}
+
+export async function updateOrganization(formData: FormData) {
+  const ctx = await getSettingsContext("manage_org");
+  if (!ctx.supabase || !ctx.profile || !ctx.user) {
+    return { error: ctx.error };
   }
 
   const id = formData.get("id") as string;
@@ -25,20 +45,8 @@ export async function updateOrganization(formData: FormData) {
     return { error: "Organization ID is required" };
   }
 
-  // Verify user belongs to this organization and has permission
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile || profile.organization_id !== id) {
+  if (ctx.profile.organization_id !== id) {
     return { error: "You do not have permission to edit this organization" };
-  }
-
-  // Check role (Superadmin or Org Admin)
-  if (profile.role !== 'superadmin' && profile.role !== 'org_admin') {
-    return { error: "Insufficient permissions" };
   }
 
   // Build update object dynamically to allow partial updates
@@ -61,7 +69,7 @@ export async function updateOrganization(formData: FormData) {
     updateData.bot_directory_enabled = (formData.get("bot_directory_enabled") as string | null) === "on";
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await ctx.supabase
     .from("organizations")
     .update(updateData)
     .eq("id", id)
@@ -82,11 +90,9 @@ export async function updateOrganization(formData: FormData) {
 }
 
 export async function createOrganizationKnowledge(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Unauthorized" };
+  const ctx = await getSettingsContext("manage_org");
+  if (!ctx.supabase || !ctx.profile || !ctx.user) {
+    return { error: ctx.error };
   }
 
   const organization_id = formData.get("organization_id") as string;
@@ -98,27 +104,16 @@ export async function createOrganizationKnowledge(formData: FormData) {
     return { error: "Organization ID is required" };
   }
 
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile || profile.organization_id !== organization_id) {
+  if (ctx.profile.organization_id !== organization_id) {
     return { error: "You do not have permission to edit this organization" };
   }
-
-  if (profile.role !== "superadmin" && profile.role !== "org_admin") {
-    return { error: "Insufficient permissions" };
-  }
-
-  const { error } = await supabase.from("organization_knowledge").insert({
+  const { error } = await ctx.supabase.from("organization_knowledge").insert({
     organization_id,
     title,
     category,
     content,
-    created_by: user.id,
-    updated_by: user.id,
+    created_by: ctx.user.id,
+    updated_by: ctx.user.id,
   });
 
   if (error) {
@@ -131,11 +126,9 @@ export async function createOrganizationKnowledge(formData: FormData) {
 }
 
 export async function deleteOrganizationKnowledge(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Unauthorized" };
+  const ctx = await getSettingsContext("manage_org");
+  if (!ctx.supabase || !ctx.profile) {
+    return { error: ctx.error };
   }
 
   const knowledgeId = formData.get("id") as string;
@@ -144,25 +137,11 @@ export async function deleteOrganizationKnowledge(formData: FormData) {
     return { error: "Knowledge ID is required" };
   }
 
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile) {
-    return { error: "You do not have permission to edit this organization" };
-  }
-
-  if (profile.role !== "superadmin" && profile.role !== "org_admin") {
-    return { error: "Insufficient permissions" };
-  }
-
-  const { error } = await supabase
+  const { error } = await ctx.supabase
     .from("organization_knowledge")
     .delete()
     .eq("id", knowledgeId)
-    .eq("organization_id", profile.organization_id);
+    .eq("organization_id", ctx.profile.organization_id);
 
   if (error) {
     console.error("Error deleting knowledge record:", error);
@@ -174,11 +153,9 @@ export async function deleteOrganizationKnowledge(formData: FormData) {
 }
 
 export async function upsertEmailTemplateBase(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Unauthorized" };
+  const ctx = await getSettingsContext("manage_org");
+  if (!ctx.supabase || !ctx.profile) {
+    return { error: ctx.error };
   }
 
   const organization_id = formData.get("organization_id") as string;
@@ -190,21 +167,10 @@ export async function upsertEmailTemplateBase(formData: FormData) {
     return { error: "Organization ID is required" };
   }
 
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("organization_id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!profile || profile.organization_id !== organization_id) {
+  if (ctx.profile.organization_id !== organization_id) {
     return { error: "You do not have permission to edit this organization" };
   }
-
-  if (profile.role !== "superadmin" && profile.role !== "org_admin") {
-    return { error: "Insufficient permissions" };
-  }
-
-  const { error } = await supabase.from("email_template_bases").upsert({
+  const { error } = await ctx.supabase.from("email_template_bases").upsert({
     organization_id,
     logo_url,
     header_html,

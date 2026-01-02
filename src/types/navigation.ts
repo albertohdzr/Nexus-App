@@ -1,21 +1,13 @@
 import { type ComponentType } from "react";
+import type { PermissionRequirement } from "@/src/types/permissions";
 
-export type UserRole =
-  | "superadmin"
-  | "org_admin"
-  | "director"
-  | "admissions"
-  | "teacher"
-  | "finance"
-  | "staff"
-  | "parent"
-  | "student";
+export type UserRole = string;
 
 export interface NavItem {
   title: string;
   href: string;
   icon?: ComponentType<{ className?: string }>;
-  roles?: UserRole[];
+  permission?: PermissionRequirement;
 }
 
 export interface ModuleConfig {
@@ -23,6 +15,6 @@ export interface ModuleConfig {
   title: string;
   icon: ComponentType<{ className?: string }>;
   href: string;
-  roles?: UserRole[];
+  permission?: PermissionRequirement;
   subNavigation: NavItem[];
 }

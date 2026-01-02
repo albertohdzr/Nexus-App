@@ -27,7 +27,7 @@ export default async function AppointmentsPage() {
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("organization_id, role")
+    .select("organization_id")
     .eq("id", user.id)
     .single()
 

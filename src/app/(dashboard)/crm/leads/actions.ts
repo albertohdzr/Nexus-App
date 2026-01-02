@@ -448,7 +448,7 @@ export const createLeadManual: CreateLeadAction = async (
 
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
-      .select("organization_id, role")
+      .select("organization_id")
       .eq("id", user.id)
       .single()
 

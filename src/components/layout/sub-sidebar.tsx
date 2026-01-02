@@ -5,12 +5,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/src/lib/utils"
 import { navigationModules, superAdminModules } from "@/src/config/navigation"
-import { UserRole } from "@/src/types/navigation"
 import { useUser } from "@/src/components/providers/auth-provider"
+import { hasPermission } from "@/src/lib/permissions"
 
 export function SubSidebar() {
     const pathname = usePathname()
-    const { role } = useUser()
+    const { permissions, roleSlug } = useUser()
 
     // Determine active module
     const allModules = [...superAdminModules, ...navigationModules]
@@ -24,7 +24,10 @@ export function SubSidebar() {
     }
 
     // Filter sub-navigation based on role
-    const subNav = activeModule.subNavigation.filter(item => !item.roles || (role ? item.roles.includes(role as UserRole) : true))
+    const subNav = activeModule.subNavigation.filter((item) => {
+        if (!item.permission) return true
+        return hasPermission(permissions, item.permission.module, item.permission.action, roleSlug)
+    })
 
     return (
         <div className="flex flex-col h-full w-64 border-r bg-card">

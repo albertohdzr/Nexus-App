@@ -3,16 +3,21 @@
 import { User } from "@supabase/supabase-js"
 import { createContext, useContext, useEffect, useState } from "react"
 import { createClient } from "@/src/lib/supabase/client"
+import type { PermissionsByModule } from "@/src/types/permissions"
 
 type AuthContextType = {
     user: User | null
-    role: string | null
+    roleSlug: string | null
+    roleName: string | null
+    permissions: PermissionsByModule
     isLoading: boolean
 }
 
 const AuthContext = createContext<AuthContextType>({
     user: null,
-    role: null,
+    roleSlug: null,
+    roleName: null,
+    permissions: {},
     isLoading: true,
 })
 
@@ -21,14 +26,20 @@ export const useUser = () => useContext(AuthContext)
 export function AuthProvider({
     children,
     initialUser,
-    initialRole,
+    initialRoleSlug,
+    initialRoleName,
+    initialPermissions,
 }: {
     children: React.ReactNode
     initialUser: User | null
-    initialRole: string | null
+    initialRoleSlug: string | null
+    initialRoleName: string | null
+    initialPermissions: PermissionsByModule
 }) {
     const [user, setUser] = useState<User | null>(initialUser)
-    const [role, setRole] = useState<string | null>(initialRole)
+    const [roleSlug, setRoleSlug] = useState<string | null>(initialRoleSlug)
+    const [roleName, setRoleName] = useState<string | null>(initialRoleName)
+    const [permissions, setPermissions] = useState<PermissionsByModule>(initialPermissions)
     const [isLoading, setIsLoading] = useState(!initialUser)
     const supabase = createClient()
 
@@ -61,7 +72,9 @@ export function AuthProvider({
                 // Ideally we'd re-fetch the role here if the user changed
             } else {
                 setUser(null)
-                setRole(null)
+                setRoleSlug(null)
+                setRoleName(null)
+                setPermissions({})
             }
             setIsLoading(false)
         })
@@ -72,7 +85,7 @@ export function AuthProvider({
     }, [supabase, user])
 
     return (
-        <AuthContext.Provider value={{ user, role, isLoading }}>
+        <AuthContext.Provider value={{ user, roleSlug, roleName, permissions, isLoading }}>
             {children}
         </AuthContext.Provider>
     )

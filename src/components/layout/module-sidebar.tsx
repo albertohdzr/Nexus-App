@@ -6,8 +6,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/src/lib/utils"
 import { navigationModules, superAdminModules } from "@/src/config/navigation"
-import { type UserRole } from "@/src/types/navigation"
 import { useUser } from "@/src/components/providers/auth-provider"
+import { hasPermission } from "@/src/lib/permissions"
 import {
     Tooltip,
     TooltipContent,
@@ -17,14 +17,19 @@ import {
 
 export function ModuleSidebar() {
     const pathname = usePathname()
-    const { role } = useUser()
+    const { permissions, roleSlug } = useUser()
 
     // Combine modules based on role
     // If superadmin, show superadmin modules + regular modules (or maybe just superadmin context?)
     // For now, let's append superadmin modules if the user is a superadmin
-    const modules = role === 'superadmin'
+    const baseModules = roleSlug === "superadmin"
         ? [...superAdminModules, ...navigationModules]
-        : navigationModules.filter(m => !m.roles || (role ? m.roles.includes(role as UserRole) : true))
+        : navigationModules
+
+    const modules = baseModules.filter((module) => {
+        if (!module.permission) return true
+        return hasPermission(permissions, module.permission.module, module.permission.action, roleSlug)
+    })
 
     return (
         <div className="flex flex-col h-full w-16 border-r bg-card items-center py-3 gap-2">

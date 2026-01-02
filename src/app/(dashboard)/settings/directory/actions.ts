@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/src/lib/supabase/server";
+import { checkPermission } from "@/src/lib/permissions-server";
 
 type ActionState = { error?: string; success?: string };
 
@@ -17,7 +18,7 @@ async function getProfileAndOrg() {
 
   const { data: profile, error } = await supabase
     .from("user_profiles")
-    .select("id, organization_id, role")
+    .select("id, organization_id")
     .eq("id", user.id)
     .single();
 
@@ -25,7 +26,8 @@ async function getProfileAndOrg() {
     return { supabase: null, profile: null, error: "No se encontró tu organización" };
   }
 
-  if (!["superadmin", "org_admin", "director", "admissions"].includes(profile.role)) {
+  const allowed = await checkPermission(supabase, user.id, "settings", "manage_directory");
+  if (!allowed) {
     return { supabase: null, profile: null, error: "Sin permisos para editar el directorio" };
   }
 

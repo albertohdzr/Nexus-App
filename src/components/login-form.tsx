@@ -70,7 +70,7 @@ export function LoginForm({
         if (isSuperAdmin) {
           router.push("/superadmin/organizations")
         } else {
-          router.push("/dashboard")
+          router.push("/home")
         }
 
         toast.success("Logged in successfully")

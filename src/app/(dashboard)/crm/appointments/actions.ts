@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/src/lib/supabase/server"
+import { checkPermission } from "@/src/lib/permissions-server"
 
 type ActionState = {
   error?: string
   success?: string
 }
-
-const ALLOWED_ROLES = ["superadmin", "org_admin", "director", "admissions"]
 
 async function getUserContext() {
   const supabase = await createClient()
@@ -22,7 +21,7 @@ async function getUserContext() {
 
   const { data: profile, error: profileError } = await supabase
     .from("user_profiles")
-    .select("id, organization_id, role")
+    .select("id, organization_id")
     .eq("id", user.id)
     .single()
 
@@ -30,7 +29,8 @@ async function getUserContext() {
     return { error: "No se encontró tu organización", supabase: null, profile: null }
   }
 
-  if (!ALLOWED_ROLES.includes(profile.role)) {
+  const allowed = await checkPermission(supabase, user.id, "crm", "manage_appointments")
+  if (!allowed) {
     return { error: "No tienes permisos para administrar citas", supabase: null, profile: null }
   }
 
