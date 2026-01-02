@@ -55,7 +55,7 @@ export default function ChangePasswordPage() {
             }
 
             toast.success("Password updated successfully")
-            router.push("/dashboard")
+            router.push("/home")
 
         } catch (error) {
             toast.error("An unexpected error occurred")
