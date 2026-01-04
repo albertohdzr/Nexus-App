@@ -1,8 +1,8 @@
 "use server"
 
-import { Resend } from "resend"
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/src/lib/supabase/server"
+import { buildEmailHtml, formatPlainTextAsHtml, sendResendEmail, toPlainText } from "@/src/lib/email"
 
 export type FollowUpActionState = {
   success?: string
@@ -45,24 +45,6 @@ export type CreateLeadAction = (
   formData: FormData
 ) => Promise<CreateLeadActionState>
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-const fromEmail =
-  process.env.RESEND_FROM_EMAIL || "Nexus CRM <onboarding@team5526.com>"
-
-const toPlainText = (text: string) =>
-  text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join("\n\n")
-
-const toHtml = (text: string) =>
-  text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => `<p style="margin: 0 0 12px;">${line}</p>`)
-    .join("")
 
 export const sendLeadFollowUp: SendLeadFollowUpAction = async (
   _prevState,
@@ -162,18 +144,15 @@ export const sendLeadFollowUp: SendLeadFollowUpAction = async (
       subjectInput.trim() ||
       `Seguimiento de admisiones - ${lead.student_name || "Nuevo lead"}`
 
-    if (!process.env.RESEND_API_KEY) {
-      console.error("RESEND_API_KEY missing")
-      return {
-        error:
-          "No se pudo enviar el correo: falta la configuración de Resend en el servidor.",
-      }
-    }
+    const { data: baseData } = await supabase
+      .from("email_template_bases")
+      .select("*")
+      .eq("organization_id", profile.organization_id)
+      .maybeSingle()
 
-    const bodyHtml = toHtml(messageInput)
-    const html = `
+    const bodyHtml = `
       <p style="margin: 0 0 12px;">Hola ${contactName},</p>
-      ${bodyHtml}
+      ${formatPlainTextAsHtml(messageInput)}
       ${
         chatSummary
           ? `<p style="margin: 12px 0; color: #4b5563;"><strong>Resumen de chat:</strong> ${chatSummary}</p>`
@@ -184,17 +163,31 @@ export const sendLeadFollowUp: SendLeadFollowUpAction = async (
       }</p>
     `
 
-    await resend.emails.send({
-      from: fromEmail,
-      to: lead.contact_email,
-      subject,
-      html,
-      text: toPlainText(
-        `Hola ${contactName},\n\n${messageInput}${
-          chatSummary ? `\n\nResumen de chat: ${chatSummary}` : ""
-        }\n\nGracias,\n${profile.full_name || "Equipo de admisiones"}`
-      ),
+    const html = buildEmailHtml({
+      bodyHtml,
+      base: baseData ?? null,
+      previewText: subject,
     })
+
+    try {
+      await sendResendEmail({
+        to: lead.contact_email,
+        subject,
+        html,
+        text: toPlainText(html),
+      })
+    } catch (sendError) {
+      const errorMessage =
+        sendError instanceof Error ? sendError.message : "Unknown error"
+      console.error("Failed to send follow-up email", sendError)
+      if (errorMessage === "RESEND_API_KEY missing") {
+        return {
+          error:
+            "No se pudo enviar el correo: falta la configuración de Resend en el servidor.",
+        }
+      }
+      return { error: "No se pudo enviar el correo de seguimiento." }
+    }
 
     const notes = `${messageInput.trim()}${
       chatSummary ? `\n\nResumen de chat: ${chatSummary}` : ""

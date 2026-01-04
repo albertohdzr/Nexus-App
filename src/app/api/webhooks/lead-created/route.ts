@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { buildEmailHtml, renderTemplate, sendResendEmail, toPlainText } from "@/src/lib/email";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -10,7 +10,6 @@ const resendFromEmail = process.env.RESEND_FROM_EMAIL ||
   "Nexus CRM <onboarding@team5526.com>";
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
-const resend = new Resend(resendApiKey);
 
 type LeadCreatedPayload = {
   event_type?: string;
@@ -127,36 +126,23 @@ export async function POST(request: Request) {
     }
 
     for (const template of matchedTemplates.values()) {
-      const subject = renderTemplate(template.subject, tokenMap);
-      const bodyHtml = renderTemplate(template.body_html, tokenMap);
-      const headerHtml = baseData?.header_html
-        ? renderTemplate(baseData.header_html, tokenMap)
-        : "";
-      const footerHtml = baseData?.footer_html
-        ? renderTemplate(baseData.footer_html, tokenMap)
-        : "";
-      const logoHtml = baseData?.logo_url
-        ? `<div style="margin-bottom:16px"><img src="${baseData.logo_url}" alt="Logo" style="height:48px" /></div>`
-        : "";
-
-      const html = `
-        <div style="font-family:Arial, sans-serif; color:#1f2937; line-height:1.6;">
-          ${logoHtml}
-          ${headerHtml}
-          <div style="margin:16px 0;">${bodyHtml}</div>
-          ${footerHtml}
-        </div>
-      `;
+      const subject = renderTemplate(template.subject, tokenMap) || "Nuevo registro";
+      const html = buildEmailHtml({
+        bodyHtml: template.body_html,
+        base: baseData ?? null,
+        previewText: subject,
+        tokens: tokenMap,
+      });
 
       if (!resendApiKey) {
         console.error("RESEND_API_KEY missing");
         continue;
       }
 
-      await resend.emails.send({
+      await sendResendEmail({
         from: resendFromEmail,
         to: lead.contact_email,
-        subject: subject || "Nuevo registro",
+        subject,
         html,
         text: toPlainText(html),
       });
@@ -254,18 +240,4 @@ function buildTokenMap(lead: Record<string, any>) {
     visit_time: "",
     campus_name: "",
   };
-}
-
-function renderTemplate(content: string, tokens: Record<string, string>) {
-  return content.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (match, key) => {
-    return tokens[key] ?? "";
-  });
-}
-
-function toPlainText(html: string) {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }

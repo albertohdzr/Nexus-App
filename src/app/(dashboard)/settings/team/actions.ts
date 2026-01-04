@@ -1,12 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Resend } from "resend";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/src/lib/supabase/server";
 import { checkPermission, getProfileWithRole } from "@/src/lib/permissions-server";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { buildEmailHtml, sendResendEmail, toPlainText } from "@/src/lib/email";
 
 type ParsedName = {
   first_name: string;
@@ -146,23 +144,43 @@ export async function createTeamMember(formData: FormData) {
     return { error: profileError.message };
   }
 
-  if (process.env.RESEND_API_KEY) {
-    try {
-      await resend.emails.send({
-        from: "Nexus <onboarding@team5526.com>",
-        to: email,
-        subject: "Acceso a Nexus - Credenciales temporales",
-        html: `
-          <h1>Bienvenido a Nexus</h1>
-          <p>Ya tienes acceso a tu organización.</p>
-          <p><strong>Usuario:</strong> ${email}</p>
-          <p><strong>Contraseña temporal:</strong> ${tempPassword}</p>
-          <p>Al iniciar sesión te pediremos cambiarla.</p>
-        `,
-      });
-    } catch (emailError) {
-      console.error("Failed to send invite email:", emailError);
-    }
+  try {
+    const { data: baseData } = await ctx.supabase
+      .from("email_template_bases")
+      .select("*")
+      .eq("organization_id", ctx.profile.organization_id)
+      .maybeSingle();
+
+    const bodyHtml = `
+      <h1 style="margin: 0 0 12px; font-size: 20px;">Bienvenido a Nexus</h1>
+      <p style="margin: 0 0 12px;">Ya tienes acceso a tu organización.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 16px 0; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 12px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600;">Usuario</td>
+          <td style="padding: 8px 12px; border: 1px solid #e5e7eb;">${email}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600;">Contraseña temporal</td>
+          <td style="padding: 8px 12px; border: 1px solid #e5e7eb;">${tempPassword}</td>
+        </tr>
+      </table>
+      <p style="margin: 0;">Al iniciar sesión te pediremos cambiar la contraseña.</p>
+    `;
+
+    const html = buildEmailHtml({
+      bodyHtml,
+      base: baseData ?? null,
+      previewText: "Acceso a Nexus",
+    });
+
+    await sendResendEmail({
+      to: email,
+      subject: "Acceso a Nexus - Credenciales temporales",
+      html,
+      text: toPlainText(html),
+    });
+  } catch (emailError) {
+    console.error("Failed to send invite email:", emailError);
   }
 
   revalidatePath("/settings/team");

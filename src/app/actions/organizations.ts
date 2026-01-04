@@ -1,11 +1,9 @@
 "use server"
 
 import { createClient } from "@/src/lib/supabase/server"
-import { Resend } from "resend"
 import { redirect } from "next/navigation"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
-
-const resend = new Resend(process.env.RESEND_API_KEY)
+import { buildEmailHtml, sendResendEmail, toPlainText } from "@/src/lib/email"
 
 type ParsedName = {
   first_name: string
@@ -175,25 +173,38 @@ export async function createOrganizationAction(formData: FormData) {
       // 4. Send Email
       try {
         console.log("Sending email...")
-        await resend.emails.send({
-            from: 'Nexus <onboarding@team5526.com>', // Update with your verified domain
-            to: adminEmail,
-            subject: 'Welcome to Nexus - Your Organization is Ready',
-            html: `
-                <h1>Welcome to Nexus!</h1>
-                <p>Your organization <strong>${name}</strong> has been created.</p>
-                <p>Here are your login credentials:</p>
-                <ul>
-                    <li><strong>Email:</strong> ${adminEmail}</li>
-                    <li><strong>Temporary Password:</strong> ${tempPassword}</li>
-                </ul>
-                <p>Please login at <a href="${process.env.NEXT_PUBLIC_APP_URL}/login">Nexus Login</a> and change your password immediately.</p>
-            `
+        const loginUrl = `${process.env.NEXT_PUBLIC_APP_URL}/login`
+        const bodyHtml = `
+          <h1 style="margin: 0 0 12px; font-size: 20px;">Welcome to Nexus!</h1>
+          <p style="margin: 0 0 12px;">Your organization <strong>${name}</strong> has been created.</p>
+          <p style="margin: 0 0 12px;">Here are your login credentials:</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 16px 0; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 12px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600;">Email</td>
+              <td style="padding: 8px 12px; border: 1px solid #e5e7eb;">${adminEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: 600;">Temporary Password</td>
+              <td style="padding: 8px 12px; border: 1px solid #e5e7eb;">${tempPassword}</td>
+            </tr>
+          </table>
+          <p style="margin: 0;">Please login at <a href="${loginUrl}">Nexus Login</a> and change your password immediately.</p>
+        `
+        const html = buildEmailHtml({
+          bodyHtml,
+          previewText: "Your Nexus organization is ready",
+        })
+
+        await sendResendEmail({
+          to: adminEmail,
+          subject: "Welcome to Nexus - Your Organization is Ready",
+          html,
+          text: toPlainText(html),
         })
         console.log("Email sent")
       } catch (emailError) {
-          console.error("Failed to send email:", emailError)
-          // Don't fail the whole process if email fails, but maybe warn
+        console.error("Failed to send email:", emailError)
+        // Don't fail the whole process if email fails, but maybe warn
       }
   }
 
