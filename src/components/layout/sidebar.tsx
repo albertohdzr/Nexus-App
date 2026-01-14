@@ -138,6 +138,13 @@ export function Sidebar({ organizationSlug, ...props }: SidebarProps) {
             ]
         },
         {
+            title: "Eventos",
+            url: `/events`,
+            icon: Calendar,
+            isActive: isPathActive("/events"),
+            module: "events",
+        },
+        {
             title: "Finance",
             url: `/finance`,
             icon: CreditCard,

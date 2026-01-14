@@ -62,6 +62,16 @@ export const navigationModules: ModuleConfig[] = [
         ],
     },
     {
+        key: "events",
+        title: "Eventos",
+        icon: Calendar,
+        href: "/events",
+        permission: { module: "events" },
+        subNavigation: [
+            { title: "Eventos", href: "/events", icon: Calendar, permission: { module: "events" } },
+        ],
+    },
+    {
         key: "finance",
         title: "Finance",
         icon: CreditCard,
