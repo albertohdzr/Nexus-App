@@ -18,12 +18,15 @@ import {
   getSessions,
   statusLabel,
 } from "@/src/lib/lead"
-import { addLeadNote, sendLeadFollowUp, updateLeadBasic } from "../actions"
+import { addLeadNote, sendLeadFollowUp, updateLeadBasic, updateLeadStatus } from "../actions"
 import { LeadEditButton } from "@/src/components/crm/lead-edit-button"
+import { LeadQuickActions } from "@/src/components/crm/lead-quick-actions"
 import { LeadCommunications } from "@/src/components/crm/lead-communications"
 import { AppointmentsSection } from "@/src/components/crm/appointments/appointments-section"
 import type { AdmissionCycle } from "@/src/types/admission"
 import type { LeadNote, LeadRecord, LeadMessage } from "@/src/types/lead"
+import { getLeadTasks } from "@/src/lib/lead-tasks"
+import { LEAD_DIVISIONS } from "@/src/lib/lead-options"
 
 type LeadPageProps = {
   params: Promise<{ leadId: string }>
@@ -79,6 +82,17 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
       contact_last_name_paternal,
       contact_full_name,
       student_name,
+      division,
+      address_street,
+      address_number,
+      address_neighborhood,
+      address_postal_code,
+      address_city,
+      address_state,
+      address_country,
+      nationality,
+      native_language,
+      secondary_language,
       created_at,
       updated_at,
       chat:chats!leads_wa_chat_id_fkey (
@@ -187,6 +201,10 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
   const emails = [...(normalized.emails ?? [])].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
+  const tasks = getLeadTasks(normalized)
+  const divisionLabel =
+    LEAD_DIVISIONS.find((item) => item.value === normalized.division)?.label ||
+    (normalized.division || "Sin division")
 
 
 
@@ -249,6 +267,43 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
 
         <TabsContent value="general" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <section className="rounded-xl border bg-card p-5 space-y-4 md:col-span-2 lg:col-span-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <div>
+                            <h3 className="text-base font-semibold text-foreground/90">Tareas pendientes</h3>
+                            <p className="text-xs text-muted-foreground">
+                                {tasks.length
+                                    ? `Tienes ${tasks.length} tarea${tasks.length !== 1 ? "s" : ""} por resolver.`
+                                    : "No hay tareas pendientes para este lead."}
+                            </p>
+                        </div>
+                        <Badge variant={tasks.length ? "default" : "outline"}>{tasks.length}</Badge>
+                    </div>
+                    {tasks.length ? (
+                        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                            {tasks.map((task) => (
+                                <div key={task.id} className="rounded-lg border bg-muted/10 p-4 flex flex-col gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold">{task.title}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
+                                    </div>
+                                    <LeadEditButton
+                                        lead={normalized}
+                                        updateLeadAction={updateLeadBasic}
+                                        cycles={cycles as AdmissionCycle[] | undefined}
+                                        triggerLabel={task.actionLabel}
+                                        triggerSize="sm"
+                                        className="w-full justify-center"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                            Sin tareas pendientes. El lead esta completo.
+                        </div>
+                    )}
+                </section>
                 {/* AI Summary Card */}
                 <section className="rounded-xl border bg-card p-5 space-y-3 lg:col-span-2">
                      <div className="flex items-center justify-between">
@@ -269,6 +324,15 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
 
                 {/* Appointment Card */}
                 <AppointmentsSection appointments={appointments || []} />
+
+                 <section className="rounded-xl border bg-card p-5 space-y-4">
+                    <h3 className="text-base font-semibold text-foreground/90">Quick actions</h3>
+                    <LeadQuickActions
+                        leadId={normalized.id}
+                        status={normalized.status}
+                        updateStatusAction={updateLeadStatus}
+                    />
+                 </section>
 
                  {/* Contact Info */}
                  <section className="rounded-xl border bg-card p-5 space-y-4">
@@ -328,7 +392,57 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
                                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Ciclo</p>
                                 <p className="text-sm">{cycleName}</p>
                             </div>
+                            <div>
+                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Division</p>
+                                <p className="text-sm">{divisionLabel}</p>
+                            </div>
                          </div>
+                    </div>
+                 </section>
+
+                 <section className="rounded-xl border bg-card p-5 space-y-4">
+                    <h3 className="text-base font-semibold text-foreground/90">Perfil Completo</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Pais</p>
+                            <p>{normalized.address_country || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Estado</p>
+                            <p>{normalized.address_state || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Ciudad</p>
+                            <p>{normalized.address_city || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Codigo postal</p>
+                            <p>{normalized.address_postal_code || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Calle</p>
+                            <p>{normalized.address_street || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Numero</p>
+                            <p>{normalized.address_number || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Colonia</p>
+                            <p>{normalized.address_neighborhood || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Nacionalidad</p>
+                            <p>{normalized.nationality || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Idioma nativo</p>
+                            <p>{normalized.native_language || "N/A"}</p>
+                        </div>
+                        <div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Segundo idioma</p>
+                            <p>{normalized.secondary_language || "N/A"}</p>
+                        </div>
                     </div>
                  </section>
 

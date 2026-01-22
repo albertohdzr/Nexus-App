@@ -38,6 +38,7 @@ export type LeadRecord = {
   school_year: string | null
   current_school: string | null
   cycle_id?: string | null
+  division?: string | null
   student_first_name?: string | null
   student_middle_name?: string | null
   student_last_name_paternal?: string | null
@@ -55,6 +56,16 @@ export type LeadRecord = {
   contact_last_name_maternal?: string | null
   contact_full_name: string | null
   student_name: string | null
+  address_street?: string | null
+  address_number?: string | null
+  address_neighborhood?: string | null
+  address_postal_code?: string | null
+  address_city?: string | null
+  address_state?: string | null
+  address_country?: string | null
+  nationality?: string | null
+  native_language?: string | null
+  secondary_language?: string | null
   created_at: string
   updated_at: string
   chat?: {

@@ -11,7 +11,22 @@ export const STATUS_STYLES: Record<string, string> = {
   admitted: "bg-emerald-100 text-emerald-800 border-transparent",
   enrolled: "bg-emerald-100 text-emerald-900 border-transparent",
   lost: "bg-rose-100 text-rose-800 border-transparent",
+  disqualified: "bg-rose-100 text-rose-800 border-transparent",
 }
+
+export const LEAD_STATUSES = [
+  "new",
+  "contacted",
+  "qualified",
+  "visit_scheduled",
+  "visited",
+  "application_started",
+  "application_submitted",
+  "admitted",
+  "enrolled",
+  "lost",
+  "disqualified",
+]
 
 export const statusLabel = (status: string) =>
   status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())

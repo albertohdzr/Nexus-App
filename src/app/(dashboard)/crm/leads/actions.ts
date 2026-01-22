@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/src/lib/supabase/server"
 import { buildEmailHtml, formatPlainTextAsHtml, sendResendEmail, toPlainText } from "@/src/lib/email"
+import { LEAD_STATUSES } from "@/src/lib/lead"
 
 export type FollowUpActionState = {
   success?: string
@@ -30,6 +31,11 @@ export type UpdateLeadActionState = {
 }
 
 export type UpdateLeadAction = (
+  prevState: UpdateLeadActionState,
+  formData: FormData
+) => Promise<UpdateLeadActionState>
+
+export type UpdateLeadStatusAction = (
   prevState: UpdateLeadActionState,
   formData: FormData
 ) => Promise<UpdateLeadActionState>
@@ -316,6 +322,17 @@ export const updateLeadBasic: UpdateLeadAction = async (
     const contactEmailRaw = (formData.get("contact_email") as string | null) ?? ""
     const contactEmail = contactEmailRaw.trim() || null
     const contactPhone = (formData.get("contact_phone") as string | null) ?? null
+    const division = (formData.get("division") as string | null) || null
+    const addressStreet = (formData.get("address_street") as string | null) ?? null
+    const addressNumber = (formData.get("address_number") as string | null) ?? null
+    const addressNeighborhood = (formData.get("address_neighborhood") as string | null) ?? null
+    const addressPostalCode = (formData.get("address_postal_code") as string | null) ?? null
+    const addressCity = (formData.get("address_city") as string | null) ?? null
+    const addressState = (formData.get("address_state") as string | null) ?? null
+    const addressCountry = (formData.get("address_country") as string | null) ?? null
+    const nationality = (formData.get("nationality") as string | null) ?? null
+    const nativeLanguage = (formData.get("native_language") as string | null) ?? null
+    const secondaryLanguage = (formData.get("secondary_language") as string | null) ?? null
 
     if (!leadId) {
       return { error: "No se encontró el lead a actualizar." }
@@ -385,6 +402,17 @@ export const updateLeadBasic: UpdateLeadAction = async (
         contact_email: contactEmail,
         contact_phone: contactPhone,
         cycle_id: cycleId,
+        division: division || null,
+        address_street: addressStreet,
+        address_number: addressNumber,
+        address_neighborhood: addressNeighborhood,
+        address_postal_code: addressPostalCode,
+        address_city: addressCity,
+        address_state: addressState,
+        address_country: addressCountry,
+        nationality,
+        native_language: nativeLanguage,
+        secondary_language: secondaryLanguage,
       })
       .eq("id", leadId)
 
@@ -399,6 +427,76 @@ export const updateLeadBasic: UpdateLeadAction = async (
   } catch (error) {
     console.error("updateLeadBasic error", error)
     return { error: "No se pudo actualizar el lead." }
+  }
+}
+
+export const updateLeadStatus: UpdateLeadStatusAction = async (
+  _prevState,
+  formData
+) => {
+  try {
+    const leadId = formData.get("leadId") as string | null
+    const status = (formData.get("status") as string | null) ?? ""
+
+    if (!leadId) {
+      return { error: "No se encontro el lead a actualizar." }
+    }
+
+    if (!LEAD_STATUSES.includes(status)) {
+      return { error: "Selecciona un estado valido." }
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      return { error: "Inicia sesion para editar leads." }
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single()
+
+    if (profileError || !profile?.organization_id) {
+      console.error("Error loading user profile", profileError)
+      return { error: "No se pudo validar tu perfil de usuario." }
+    }
+
+    const { data: lead, error: leadError } = await supabase
+      .from("leads")
+      .select("id, organization_id")
+      .eq("id", leadId)
+      .maybeSingle()
+
+    if (leadError || !lead) {
+      console.error("Error loading lead for status update", leadError)
+      return { error: "No se encontro el lead." }
+    }
+
+    if (lead.organization_id !== profile.organization_id) {
+      return { error: "No tienes permiso para editar este lead." }
+    }
+
+    const { error: updateError } = await supabase
+      .from("leads")
+      .update({ status })
+      .eq("id", leadId)
+
+    if (updateError) {
+      console.error("Error updating lead status", updateError)
+      return { error: "No se pudo actualizar el estado." }
+    }
+
+    revalidatePath("/crm/leads")
+    revalidatePath(`/crm/leads/${leadId}`)
+    return { success: "Estado actualizado." }
+  } catch (error) {
+    console.error("updateLeadStatus error", error)
+    return { error: "No se pudo actualizar el estado." }
   }
 }
 

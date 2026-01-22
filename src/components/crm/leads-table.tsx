@@ -101,7 +101,7 @@ function StatusBadge({ status }: { status: string }) {
     )
   }
   
-  if (s === "lost" || s === "archived") {
+  if (s === "lost" || s === "archived" || s === "disqualified") {
     return (
       <div
         className="flex items-center gap-1 px-2 py-1 rounded-lg border border-amber-500/40 w-fit outline-none"
@@ -377,6 +377,12 @@ export function LeadsTable({ leads, sendFollowUpAction }: LeadsTableProps) {
                     onCheckedChange={() => setStatusFilter("contacted")}
                   >
                     Contacted
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={statusFilter === "disqualified"}
+                    onCheckedChange={() => setStatusFilter("disqualified")}
+                  >
+                    Disqualified
                   </DropdownMenuCheckboxItem>
                 </div>
               </div>

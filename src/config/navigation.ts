@@ -1,6 +1,7 @@
 import {
     Building2,
     Calendar,
+    CheckSquare,
     CreditCard,
     FileText,
     GraduationCap,
@@ -31,6 +32,7 @@ export const navigationModules: ModuleConfig[] = [
         permission: { module: "crm" },
         subNavigation: [
             { title: "Leads", href: "/crm/leads", icon: Users, permission: { module: "crm" } },
+            { title: "My Tasks", href: "/crm/my-tasks", icon: CheckSquare, permission: { module: "crm" } },
             { title: "Citas", href: "/crm/appointments", icon: Calendar, permission: { module: "crm", action: "manage_appointments" } },
             { title: "Activities", href: "/crm/activities", icon: Calendar },
             { title: "Chatbot", href: "/crm/chat", icon: MessageSquare, permission: { module: "crm" } },
