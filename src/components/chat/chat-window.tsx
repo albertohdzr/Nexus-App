@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { MoreVertical, Phone, Video, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download, Hand, Mic, Search } from "lucide-react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 import { useChat } from "@/src/hooks/use-chat";
@@ -121,6 +122,23 @@ export default function ChatWindow() {
         !activeSession?.closed_at;
     
     const isInputLocked = !isWithin24Hours || isAiLocked;
+    const windowRemainingMs = Math.max(0, (24 * 60 * 60 * 1000) - (now - lastReceivedTime));
+
+    const getWindowRemainingLabel = (remainingMs: number) => {
+        const totalMinutes = Math.ceil(remainingMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+
+        if (hours > 0 && minutes > 0) {
+            return `Quedan ${hours} h ${minutes} min`;
+        }
+
+        if (hours > 0) {
+            return `Quedan ${hours} h`;
+        }
+
+        return `Quedan ${Math.max(minutes, 1)} min`;
+    };
 
     const onEmojiClick = (emojiData: EmojiClickData) => {
         setMessageInput((prev) => prev + emojiData.emoji);
@@ -291,12 +309,28 @@ export default function ChatWindow() {
                         )}>
                             {activeSession?.ai_enabled ? "AI activo" : "AI apagado"}
                         </span>
-                        <span className={cn(
-                            "rounded-full border px-2 py-0.5",
-                            isWithin24Hours ? "bg-green-50 text-green-800 border-green-200" : "bg-orange-50 text-orange-800 border-orange-200"
-                        )}>
-                            {isWithin24Hours ? "Ventana 24h Activa" : "Fuera de Ventana 24h"}
-                        </span>
+                        {isWithin24Hours ? (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <span className={cn(
+                                        "rounded-full border px-2 py-0.5",
+                                        "bg-green-50 text-green-800 border-green-200"
+                                    )}>
+                                        Ventana 24h Activa
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" sideOffset={6}>
+                                    {getWindowRemainingLabel(windowRemainingMs)}
+                                </TooltipContent>
+                            </Tooltip>
+                        ) : (
+                            <span className={cn(
+                                "rounded-full border px-2 py-0.5",
+                                "bg-orange-50 text-orange-800 border-orange-200"
+                            )}>
+                                Fuera de Ventana 24h
+                            </span>
+                        )}
                     </div>
                     <div className="flex bg-white/50 dark:bg-white/10 rounded-full p-1 border border-transparent hover:border-black/5 dark:hover:border-white/5 transition-colors">
                         <Button
