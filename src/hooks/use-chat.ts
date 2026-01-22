@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/src/lib/supabase/client";
 import { Chat, Message } from "@/src/types/chat";
+import type { LeadChatSession } from "@/src/types/lead";
 
 export function useChat(chatId: string | null) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [chat, setChat] = useState<Chat | null>(null);
+    const [sessions, setSessions] = useState<LeadChatSession[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const supabase = createClient();
 
@@ -39,6 +41,16 @@ export function useChat(chatId: string | null) {
 
             if (messagesData) {
                 setMessages(messagesData);
+            }
+
+            const { data: sessionsData } = await supabase
+                .from("chat_sessions")
+                .select("*")
+                .eq("chat_id", chatId)
+                .order("updated_at", { ascending: false });
+
+            if (sessionsData) {
+                setSessions(sessionsData);
             }
             setIsLoading(false);
         };
@@ -78,6 +90,47 @@ export function useChat(chatId: string | null) {
                     }
                 },
             )
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "chats",
+                    filter: `id=eq.${chatId}`,
+                },
+                (payload) => {
+                    setChat(payload.new as Chat);
+                },
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "chat_sessions",
+                    filter: `chat_id=eq.${chatId}`,
+                },
+                (payload) => {
+                    if (payload.eventType === "INSERT") {
+                        setSessions((prev) => [payload.new as LeadChatSession, ...prev]);
+                    }
+                    if (payload.eventType === "UPDATE") {
+                        setSessions((prev) =>
+                            prev
+                                .map((session) =>
+                                    session.id === payload.new.id
+                                        ? (payload.new as LeadChatSession)
+                                        : session
+                                )
+                                .sort((a, b) => {
+                                    const left = new Date(a.updated_at || a.created_at || 0).getTime();
+                                    const right = new Date(b.updated_at || b.created_at || 0).getTime();
+                                    return right - left;
+                                })
+                        );
+                    }
+                },
+            )
             .subscribe();
 
         return () => {
@@ -85,5 +138,9 @@ export function useChat(chatId: string | null) {
         };
     }, [chatId, supabase]);
 
-    return { messages, chat, setMessages, setChat, isLoading };
+    const activeSession = chat?.active_session_id
+        ? sessions.find((session) => session.id === chat.active_session_id) || null
+        : null;
+
+    return { messages, chat, sessions, activeSession, setMessages, setChat, isLoading };
 }

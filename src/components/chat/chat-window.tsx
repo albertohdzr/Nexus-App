@@ -21,7 +21,7 @@ export default function ChatWindow() {
     // Hooks
     const searchParams = useSearchParams();
     const chatId = searchParams.get("chatId");
-    const { messages, chat, setChat } = useChat(chatId);
+    const { messages, chat, activeSession, setChat } = useChat(chatId);
     
     // Local State
     const [messageInput, setMessageInput] = useState("");
@@ -29,6 +29,7 @@ export default function ChatWindow() {
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
+    const [organizationId, setOrganizationId] = useState<string | null>(null);
     
     // Custom Hooks
     const { 
@@ -83,10 +84,34 @@ export default function ChatWindow() {
         }
     }, [messages]);
 
+    useEffect(() => {
+        const loadOrganizationId = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                setOrganizationId(null);
+                return;
+            }
+
+            const { data: profile } = await supabase
+                .from("user_profiles")
+                .select("organization_id")
+                .eq("id", user.id)
+                .single();
+
+            setOrganizationId(profile?.organization_id ?? null);
+        };
+
+        void loadOrganizationId();
+    }, [supabase]);
+
     // Helpers
     const handoverRequested =
         Boolean(chat?.requested_handoff) ||
         messages.some((message) => message.payload?.handover);
+    const isAiLocked =
+        Boolean(activeSession?.ai_enabled) &&
+        (activeSession?.status ?? "active") === "active" &&
+        !activeSession?.closed_at;
 
     const onEmojiClick = (emojiData: EmojiClickData) => {
         setMessageInput((prev) => prev + emojiData.emoji);
@@ -97,6 +122,26 @@ export default function ChatWindow() {
         try {
             setIsClosing(true);
             const nowIso = new Date().toISOString();
+            const orgId = organizationId;
+
+            if (!orgId) {
+                toast.error("No se pudo identificar la organizacion.");
+                return;
+            }
+
+            const response = await fetch("/api/whatsapp/chats/close-session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    chat_id: chat.id,
+                    org_id: orgId,
+                    model: "grok-4",
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error("close-session failed");
+            }
 
             if (chat.active_session_id) {
                 const { error: sessionError } = await supabase
@@ -145,6 +190,26 @@ export default function ChatWindow() {
         }
     };
 
+    const handleDisableAi = async () => {
+        if (!activeSession?.id) return;
+        try {
+            const nowIso = new Date().toISOString();
+            const { error } = await supabase
+                .from("chat_sessions")
+                .update({ ai_enabled: false, updated_at: nowIso })
+                .eq("id", activeSession.id);
+
+            if (error) {
+                throw error;
+            }
+
+            toast.success("AI desactivado. Ya puedes responder.");
+        } catch (err) {
+            console.error("Error disabling AI:", err);
+            toast.error("No se pudo desactivar el AI.");
+        }
+    };
+
     if (!chatId) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center bg-muted/10 text-muted-foreground h-full">
@@ -168,6 +233,7 @@ export default function ChatWindow() {
             onDrop={(e) => {
                 e.preventDefault();
                 setIsDragging(false);
+                if (isAiLocked) return;
                 const file = e.dataTransfer.files?.[0];
                 if (file) {
                     void handleFileSelection(file);
@@ -203,6 +269,20 @@ export default function ChatWindow() {
                             <span className="hidden sm:inline">Handoff</span>
                         </span>
                     )}
+                    <div className="hidden lg:flex items-center gap-2 text-xs">
+                        <span className={cn(
+                            "rounded-full border px-2 py-0.5",
+                            activeSession ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-muted text-muted-foreground border-border"
+                        )}>
+                            {activeSession ? "Sesion activa" : "Sin sesion activa"}
+                        </span>
+                        <span className={cn(
+                            "rounded-full border px-2 py-0.5",
+                            activeSession?.ai_enabled ? "bg-indigo-50 text-indigo-800 border-indigo-200" : "bg-muted text-muted-foreground border-border"
+                        )}>
+                            {activeSession?.ai_enabled ? "AI activo" : "AI apagado"}
+                        </span>
+                    </div>
                     <div className="flex bg-white/50 dark:bg-white/10 rounded-full p-1 border border-transparent hover:border-black/5 dark:hover:border-white/5 transition-colors">
                         <Button
                             variant="ghost"
@@ -215,7 +295,7 @@ export default function ChatWindow() {
                             <X className="h-5 w-5" />
                         </Button>
                     </div>
-                     <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                             <Video className="h-5 w-5" />
                         </Button>
@@ -237,6 +317,18 @@ export default function ChatWindow() {
                 <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm z-10 flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse"></div>
                     El bot solicitó conectar con un agente. Responde aquí para tomar el caso.
+                </div>
+            )}
+
+            {isAiLocked && (
+                <div className="mx-4 mt-3 rounded-md border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 shadow-sm z-10 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                        AI activo en esta sesion. Desactivalo para responder.
+                    </div>
+                    <Button size="sm" variant="outline" onClick={handleDisableAi}>
+                        Desactivar AI
+                    </Button>
                 </div>
             )}
 
@@ -364,6 +456,7 @@ const isReceived = message.status === 'received';
                 onDrop={(e) => {
                     e.preventDefault();
                     setIsDragging(false);
+                    if (isAiLocked) return;
                     const file = e.dataTransfer.files?.[0];
                     if (file) {
                         void handleFileSelection(file);
@@ -394,6 +487,7 @@ const isReceived = message.status === 'received';
                         variant="ghost"
                         size="icon"
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        disabled={isAiLocked}
                         className={cn(
                             "text-[#54656f] dark:text-[#aebac1] hover:text-foreground h-10 w-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
                             showEmojiPicker && "bg-black/10 dark:bg-white/10"
@@ -403,7 +497,13 @@ const isReceived = message.status === 'received';
                     </Button>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-[#54656f] dark:text-[#aebac1] hover:text-foreground rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                disabled={isAiLocked}
+                                className="h-10 w-10 text-[#54656f] dark:text-[#aebac1] hover:text-foreground rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                            >
                                 <Plus className="h-6 w-6" />
                             </Button>
                         </DropdownMenuTrigger>
@@ -438,6 +538,10 @@ const isReceived = message.status === 'received';
                 <form
                     action={async (formData) => {
                         if (!chatId) return;
+                        if (isAiLocked) {
+                            toast.error("Desactiva el AI para enviar mensajes.");
+                            return;
+                        }
                         formData.append("chatId", chatId);
                         formData.set("message", messageInput);
                         formData.set("caption", captionInput);
@@ -499,6 +603,7 @@ const isReceived = message.status === 'received';
                                 className="w-full py-6 bg-white dark:bg-[#2a3942] border-none focus-visible:ring-0 rounded-lg text-base shadow-sm placeholder:text-[#54656f] dark:placeholder:text-[#8696a0] dark:text-[#e9edef]"
                                 required={!attachment}
                                 autoComplete="off"
+                                disabled={isAiLocked}
                             />
                         </div>
                     )}
@@ -515,6 +620,7 @@ const isReceived = message.status === 'received';
                                 form?.requestSubmit();
                             }}
                             className="h-10 w-10 rounded-full shadow-sm bg-[#00a884] hover:bg-[#008f6f] text-white transition-all transform scale-100"
+                            disabled={isAiLocked}
                         >
                             <Send className="h-5 w-5 ml-0.5" />
                         </Button>
@@ -527,6 +633,7 @@ const isReceived = message.status === 'received';
                                 "h-10 w-10 rounded-full text-[#54656f] dark:text-[#aebac1] hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
                                 isRecording && "text-red-500 hover:text-red-600 animate-pulse bg-red-50"
                             )}
+                            disabled={isAiLocked}
                             onClick={async () => {
                                 if (isRecording) {
                                     stopRecording();
