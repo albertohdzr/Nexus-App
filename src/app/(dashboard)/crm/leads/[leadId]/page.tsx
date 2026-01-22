@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
-import { ArrowLeft, Clock3, Mail, MessageSquare, Phone } from "lucide-react"
+import { ArrowLeft, Mail, MessageSquare, Phone } from "lucide-react"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Separator } from "@/src/components/ui/separator"
@@ -21,6 +21,7 @@ import {
 import { addLeadNote, sendLeadFollowUp, updateLeadBasic } from "../actions"
 import { LeadEditButton } from "@/src/components/crm/lead-edit-button"
 import { LeadCommunications } from "@/src/components/crm/lead-communications"
+import { AppointmentsSection } from "@/src/components/crm/appointments/appointments-section"
 import type { AdmissionCycle } from "@/src/types/admission"
 import type { LeadNote, LeadRecord, LeadMessage } from "@/src/types/lead"
 
@@ -186,15 +187,7 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
   const emails = [...(normalized.emails ?? [])].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
-  const now = Date.now()
-  const nextAppointment =
-    appointments?.find((appointment) => {
-      const start = new Date(appointment.starts_at).getTime()
-      return !Number.isNaN(start) && start >= now
-    }) ?? null
-  const latestAppointment =
-    appointments && appointments.length ? appointments[appointments.length - 1] : null
-  const currentAppointment = nextAppointment ?? latestAppointment
+
 
 
 
@@ -275,46 +268,7 @@ export default async function LeadDetailPage({ params }: LeadPageProps) {
                 </section>
 
                 {/* Appointment Card */}
-                <section className="rounded-xl border bg-card p-5 space-y-3">
-                     <div className="flex items-center justify-between">
-                        <h3 className="text-base font-semibold text-foreground/90">Próxima Cita</h3>
-                        <Badge variant="outline">
-                            {appointments?.length ?? 0} total
-                        </Badge>
-                    </div>
-                    {currentAppointment ? (
-                    <div className="space-y-3 p-3 border rounded-lg bg-accent/20">
-                        <div className="flex items-center gap-2 font-medium">
-                           <Clock3 className="h-4 w-4 text-primary" />
-                           {new Date(currentAppointment.starts_at).toLocaleString("es-MX", {
-                                weekday: 'short',
-                                day: 'numeric',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                            })}
-                        </div>
-                         {currentAppointment.campus && (
-                            <div className="text-sm text-muted-foreground">
-                                Campus: {currentAppointment.campus}
-                            </div>
-                        )}
-                        <div className="flex gap-2">
-                             <Badge variant="secondary" className="text-xs">{statusLabel(currentAppointment.status || 'scheduled')}</Badge>
-                             {currentAppointment.type && <Badge variant="outline" className="text-xs">{currentAppointment.type}</Badge>}
-                        </div>
-                         {currentAppointment.notes && (
-                            <p className="text-xs text-muted-foreground mt-2 border-t pt-2 border-border/50">
-                                {currentAppointment.notes}
-                            </p>
-                         )}
-                    </div>
-                    ) : (
-                    <div className="text-sm text-muted-foreground py-4 text-center border rounded-lg border-dashed">
-                        No hay citas programadas
-                    </div>
-                    )}
-                </section>
+                <AppointmentsSection appointments={appointments || []} />
 
                  {/* Contact Info */}
                  <section className="rounded-xl border bg-card p-5 space-y-4">
