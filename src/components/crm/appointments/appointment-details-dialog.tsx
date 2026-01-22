@@ -25,13 +25,14 @@ const getStatusColor = (status: string) => {
   }
 }
 
+const statusIcons: Record<string, any> = {
+  scheduled: Circle,
+  completed: CheckCircle2,
+  cancelled: XCircle,
+}
+
 const getStatusIcon = (status: string) => {
-  switch (status) {
-    case 'scheduled': return Circle
-    case 'completed': return CheckCircle2
-    case 'cancelled': return XCircle
-    default: return AlertCircle
-  }
+  return statusIcons[status] || AlertCircle
 }
 
 interface AppointmentDetailsDialogProps {

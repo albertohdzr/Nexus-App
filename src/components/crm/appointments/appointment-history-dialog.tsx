@@ -27,7 +27,7 @@ export function AppointmentHistoryDialog({
   onOpenChange,
   onSelectAppointment,
 }: AppointmentHistoryDialogProps) {
-  // Sort descending for history
+  const now = Date.now()
   const sorted = [...appointments].sort((a, b) => 
     new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime()
   )
@@ -57,7 +57,7 @@ export function AppointmentHistoryDialog({
             <div className="space-y-4">
               {sorted.map((apt) => {
                 const date = new Date(apt.starts_at)
-                const isPast = date.getTime() < Date.now()
+                const isPast = date.getTime() < now
                 
                 return (
                   <div
