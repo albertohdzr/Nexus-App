@@ -55,13 +55,52 @@ export async function sendMessage(formData: FormData) {
   // 1. Fetch Chat Details to get recipient and organization
   const { data: chat, error: chatError } = await supabase
     .from("chats")
-    .select("wa_id, organization_id")
+    .select("wa_id, organization_id, active_session_id")
     .eq("id", chatId)
     .single();
 
   if (chatError || !chat) {
     console.error("Error fetching chat:", chatError);
     return { error: "Chat not found" };
+  }
+
+  // 1.5 Handle Active Session
+  let activeSessionId = chat.active_session_id;
+
+  // We only auto-create session if we are the user (agent) initiating or replying
+  // For now, sendMessage is always triggered by the agent/user app side.
+  if (!activeSessionId) {
+    const { data: newSession, error: sessionError } = await supabase
+      .from("chat_sessions")
+      .insert({
+        organization_id: chat.organization_id,
+        chat_id: chatId,
+        status: "active",
+        ai_enabled: false, // Default to false when agent initiates
+        summary: "Sesión iniciada por agente",
+      })
+      .select("id")
+      .single();
+
+    if (sessionError || !newSession) {
+      console.error("Error creating new session:", sessionError);
+      return { error: "Failed to create chat session" };
+    }
+
+    activeSessionId = newSession.id;
+
+    // Update chat with new session
+    const { error: updateChatError } = await supabase
+      .from("chats")
+      .update({
+        active_session_id: activeSessionId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", chatId);
+
+    if (updateChatError) {
+      console.error("Error updating chat with session:", updateChatError);
+    }
   }
 
   // 2. Fetch Organization Details to get phone_number_id
@@ -112,7 +151,10 @@ export async function sendMessage(formData: FormData) {
       const isAudio = ALLOWED_AUDIO_TYPES.includes(mimeType);
 
       if (!isImage && !isDoc && !isAudio) {
-        return { error: "Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT, audio (AAC/AMR/MP3/MP4/OGG) o imagen JPEG/PNG." };
+        return {
+          error:
+            "Tipo de archivo no permitido. Usa PDF, DOC(X), XLS(X), PPT(X), TXT, audio (AAC/AMR/MP3/MP4/OGG) o imagen JPEG/PNG.",
+        };
       }
 
       if (isImage && media.size > MAX_IMAGE_BYTES) {
@@ -125,17 +167,20 @@ export async function sendMessage(formData: FormData) {
         return { error: "El audio debe pesar máximo 16 MB" };
       }
 
-      const { mediaId: uploadedMediaId, error: uploadError } = await uploadWhatsAppMedia({
-        phoneNumberId: org.phone_number_id,
-        accessToken,
-        file: media,
-        mimeType,
-        fileName: media.name || `image-${Date.now()}.jpg`,
-      });
+      const { mediaId: uploadedMediaId, error: uploadError } =
+        await uploadWhatsAppMedia({
+          phoneNumberId: org.phone_number_id,
+          accessToken,
+          file: media,
+          mimeType,
+          fileName: media.name || `image-${Date.now()}.jpg`,
+        });
 
       if (uploadError || !uploadedMediaId) {
         console.error("WhatsApp media upload error:", uploadError);
-        return { error: `Error subiendo imagen: ${uploadError || "sin detalle"}` };
+        return {
+          error: `Error subiendo imagen: ${uploadError || "sin detalle"}`,
+        };
       }
 
       let sendResult:
@@ -176,18 +221,20 @@ export async function sendMessage(formData: FormData) {
 
       waMessageId = sendResult?.messageId;
       type = isImage ? "image" : isDoc ? "document" : "audio";
-      bodyToStore = caption || messageBody || fileName || (isVoice ? "Mensaje de voz" : "");
+      bodyToStore = caption || messageBody || fileName ||
+        (isVoice ? "Mensaje de voz" : "");
       mediaId = uploadedMediaId;
       mediaMimeType = mimeType;
       // Store a copy in Supabase Storage
       try {
         const buffer = Buffer.from(await media.arrayBuffer());
         const storagePath = `chats/${chatId}/${uploadedMediaId}-${media.name}`;
-        const { path: storedPath, error: storageError } = await (await import("@/src/lib/storage")).uploadToStorage({
-          file: buffer,
-          path: storagePath,
-          contentType: mimeType,
-        });
+        const { path: storedPath, error: storageError } =
+          await (await import("@/src/lib/storage")).uploadToStorage({
+            file: buffer,
+            path: storagePath,
+            contentType: mimeType,
+          });
         if (storageError) {
           console.error("Storage upload error:", storageError);
         } else {
@@ -228,14 +275,18 @@ export async function sendMessage(formData: FormData) {
       sent_at: createdAt,
       sender_profile_id: user.id,
       sender_name: profile
-        ? profile.full_name || `${profile.first_name} ${profile.last_name_paternal || ""}`.trim()
+        ? profile.full_name ||
+          `${profile.first_name} ${profile.last_name_paternal || ""}`.trim()
         : null,
       payload,
       media_id: mediaId,
-      media_url: mediaPath ? `/api/storage/media?path=${encodeURIComponent(mediaPath)}` : mediaUrl,
+      media_url: mediaPath
+        ? `/api/storage/media?path=${encodeURIComponent(mediaPath)}`
+        : mediaUrl,
       media_path: mediaPath,
       media_mime_type: mediaMimeType,
       created_at: createdAt,
+      chat_session_id: activeSessionId,
     });
 
     if (insertError) {

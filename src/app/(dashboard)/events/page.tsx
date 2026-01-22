@@ -168,7 +168,7 @@ export default async function EventsPage() {
             events.map((event) => {
               const divisionLabel = (event.divisions || [])
                 .map(
-                  (division) =>
+                  (division: string) =>
                     DIVISIONS.find((item) => item.value === division)?.label ||
                     division
                 )

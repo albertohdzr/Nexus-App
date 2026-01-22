@@ -3,20 +3,15 @@
 import { useActionState, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { CalendarClock, ExternalLink, Mail, Phone } from "lucide-react"
+import { CalendarClock, ExternalLink, Mail, Phone, ChevronDown, ChevronUp } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/src/components/ui/badge"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
 import { Label } from "@/src/components/ui/label"
 import { Separator } from "@/src/components/ui/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/src/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/src/components/ui/sheet"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/src/components/ui/collapsible"
 import { LeadEditButton } from "@/src/components/crm/lead-edit-button"
 import { LeadNoteForm } from "@/src/components/crm/lead-note-form"
 import { createClient } from "@/src/lib/supabase/client"
@@ -39,6 +34,7 @@ type Appointment = {
   type: string | null
   status: string | null
   notes: string | null
+  lead_id?: string
 }
 
 type ChatInfo = {
@@ -56,6 +52,186 @@ type LeadSidePanelProps = {
   createLeadAction: CreateLeadFromChatAction
 }
 
+function CollapsibleSessions({ sessions }: { sessions: LeadChatSession[] }) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  if (!sessions.length) {
+    return (
+      <div className="flex flex-col gap-2">
+         <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold">Sesiones</h4>
+            <Badge variant="outline">0</Badge>
+         </div>
+         <p className="text-sm text-muted-foreground">No hay sesiones registradas.</p>
+      </div>
+    )
+  }
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold">Sesiones</h4>
+        <div className="flex items-center gap-2">
+             <Badge variant="outline">{sessions.length}</Badge>
+             <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+            </CollapsibleTrigger>
+        </div>
+      </div>
+      
+      {/* Always show most recent session if exists */}
+      {!isOpen && sessions.length > 0 && (
+          <div className="rounded-lg border p-3 bg-muted/5">
+             <div className="flex flex-wrap items-center gap-2 text-xs mb-1">
+                 <Badge variant="secondary" className="capitalize">{sessions[0].status || "active"}</Badge>
+                 <span className="text-muted-foreground">{formatRelativeDate(sessions[0].last_response_at || sessions[0].updated_at)}</span>
+             </div>
+              <p className="text-sm text-muted-foreground line-clamp-2">{sessions[0].summary || "Sin resumen"}</p>
+          </div>
+      )}
+
+      <CollapsibleContent className="space-y-3">
+        {sessions.map((session) => {
+           const lastActivity = session.last_response_at || session.updated_at || session.created_at
+           return (
+            <div key={session.id} className="rounded-lg border p-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="secondary" className="capitalize">{session.status || "active"}</Badge>
+                    <Badge variant={session.ai_enabled ? "default" : "outline"}>
+                        {session.ai_enabled ? "AI activo" : "AI apagado"}
+                    </Badge>
+                    <span className="text-muted-foreground">{formatRelativeDate(lastActivity)}</span>
+                </div>
+                <p className="text-sm text-muted-foreground">{session.summary || "Sin resumen para esta sesion."}</p>
+            </div>
+           )
+        })}
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function LeadCard({ 
+    lead, 
+    cycleName, 
+    updateLeadAction, 
+    cycles, 
+    upcomingAppointment, 
+    totalAppointments,
+    addLeadNoteAction
+}: { 
+    lead: LeadRecord, 
+    cycleName: string, 
+    updateLeadAction: UpdateLeadAction, 
+    cycles: AdmissionCycle[], 
+    upcomingAppointment?: Appointment,
+    totalAppointments: number,
+    addLeadNoteAction: AddLeadNoteAction
+}) {
+    const [isOpen, setIsOpen] = useState(false)
+    
+    return (
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="rounded-xl border bg-card overflow-hidden">
+            <div className="p-4 flex items-center justify-between bg-card">
+                 <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                         <span className="font-semibold text-sm">{lead.student_name}</span>
+                          <Badge 
+                            variant="outline" 
+                            className={cn("text-[10px] h-5 px-1.5 capitalize", STATUS_STYLES[lead.status])}
+                        >
+                            {statusLabel(lead.status)}
+                        </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{lead.grade_interest} • {cycleName}</span>
+                 </div>
+                 <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                </CollapsibleTrigger>
+            </div>
+            
+            <CollapsibleContent className="px-4 pb-4 space-y-4 border-t pt-4">
+                 {/* Contact Details */}
+                 <div className="grid gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider">Contacto</p>
+                      <p className="font-medium">{lead.contact_full_name || lead.contact_first_name || "N/A"}</p>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Mail className="h-4 w-4" />
+                      {lead.contact_email ? (
+                        <a href={`mailto:${lead.contact_email}`} className="text-sm hover:underline">{lead.contact_email}</a>
+                      ) : <span className="text-sm">Sin correo</span>}
+                    </div>
+                     <div className="flex items-center gap-2 text-muted-foreground">
+                      <Phone className="h-4 w-4" />
+                      {lead.contact_phone ? (
+                        <a href={`tel:${lead.contact_phone}`} className="text-sm hover:underline">{lead.contact_phone}</a>
+                      ) : <span className="text-sm">Sin telefono</span>}
+                    </div>
+                 </div>
+
+                 <Separator />
+
+                 {/* School Details */}
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Escuela actual</p>
+                        <p className="font-medium">{lead.current_school || "N/A"}</p>
+                      </div>
+                      <div>
+                         <p className="text-xs text-muted-foreground uppercase tracking-wider">Fuente</p>
+                         <p className="font-medium capitalize">{lead.source}</p>
+                      </div>
+                  </div>
+
+                 <LeadEditButton
+                    lead={lead}
+                    updateLeadAction={updateLeadAction}
+                    cycles={cycles}
+                    className="w-full justify-center"
+                  />
+
+                  {/* Appointments Summary */}
+                  <div className="rounded-lg border p-3 bg-muted/10 space-y-2">
+                      <div className="flex items-center justify-between">
+                           <h5 className="text-xs font-semibold">Visitas ({totalAppointments})</h5>
+                           {upcomingAppointment && <Badge variant="default" className="text-[10px] h-5">Próxima</Badge>}
+                      </div>
+                      
+                      {upcomingAppointment ? (
+                          <>
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <CalendarClock className="h-4 w-4 text-primary" />
+                                {new Date(upcomingAppointment.starts_at).toLocaleString("es-MX", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                            {upcomingAppointment.campus && <p className="text-xs text-muted-foreground">Campus: {upcomingAppointment.campus}</p>}
+                          </>
+                      ) : (
+                          <p className="text-xs text-muted-foreground">No hay visitas próximas.</p>
+                      )}
+                  </div>
+                  
+                  {/* Notes */}
+                  <div className="space-y-2">
+                      <h5 className="text-xs font-semibold">Nota rápida</h5>
+                      <LeadNoteForm leadId={lead.id} sendNoteAction={addLeadNoteAction} />
+                  </div>
+                  
+                  <div className="pt-2 flex justify-end">
+                      <Button variant="link" size="sm" asChild className="h-auto p-0 text-xs">
+                          <Link href={`/crm/leads/${lead.id}`} target="_blank">Ver perfil completo <ExternalLink className="ml-1 h-3 w-3" /></Link>
+                      </Button>
+                  </div>
+            </CollapsibleContent>
+        </Collapsible>
+    )
+}
+
 export default function LeadSidePanel({
   updateLeadAction,
   addLeadNoteAction,
@@ -65,13 +241,13 @@ export default function LeadSidePanel({
   const chatId = searchParams.get("chatId")
   const router = useRouter()
   const supabase = createClient()
-  const [lead, setLead] = useState<LeadRecord | null>(null)
+  const [leads, setLeads] = useState<LeadRecord[]>([])
   const [chatInfo, setChatInfo] = useState<ChatInfo | null>(null)
   const [sessions, setSessions] = useState<LeadChatSession[]>([])
   const [cycles, setCycles] = useState<AdmissionCycle[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [hasLead, setHasLead] = useState<boolean | null>(null)
+  const [hasLeads, setHasLeads] = useState<boolean | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [createState, createActionHandler, createPending] = useActionState<
@@ -95,10 +271,10 @@ export default function LeadSidePanel({
   useEffect(() => {
     let isMounted = true
 
-    const loadLead = async () => {
+    const loadData = async () => {
       if (!chatId) {
-        setLead(null)
-        setHasLead(null)
+        setLeads([])
+        setHasLeads(null)
         setAppointments([])
         setCycles([])
         setChatInfo(null)
@@ -116,7 +292,7 @@ export default function LeadSidePanel({
       if (!user) {
         if (isMounted) {
           setIsLoading(false)
-          setHasLead(false)
+          setHasLeads(false)
         }
         return
       }
@@ -130,7 +306,7 @@ export default function LeadSidePanel({
       if (!profile?.organization_id) {
         if (isMounted) {
           setIsLoading(false)
-          setHasLead(false)
+          setHasLeads(false)
         }
         return
       }
@@ -145,7 +321,7 @@ export default function LeadSidePanel({
 
       setChatInfo((chatData as ChatInfo) ?? null)
 
-      const { data: leadData } = await supabase
+      const { data: leadsData } = await supabase
         .from("leads")
         .select(
           `
@@ -180,11 +356,11 @@ export default function LeadSidePanel({
         )
         .eq("organization_id", profile.organization_id)
         .eq("wa_chat_id", chatId)
-        .maybeSingle()
+        .order("created_at", { ascending: false })
 
       const { data: sessionsData } = await supabase
         .from("chat_sessions")
-        .select("id, status, summary, last_response_at, updated_at, created_at, ai_enabled, closed_at")
+        .select("id, status, summary, last_response_at, updated_at, created_at, ai_enabled")
         .eq("chat_id", chatId)
         .order("updated_at", { ascending: false })
 
@@ -192,18 +368,19 @@ export default function LeadSidePanel({
 
       setSessions((sessionsData as LeadChatSession[]) ?? [])
 
-      if (!leadData) {
-        setLead(null)
-        setHasLead(false)
+      if (!leadsData || leadsData.length === 0) {
+        setLeads([])
+        setHasLeads(false)
         setAppointments([])
         setCycles([])
         setIsLoading(false)
         return
       }
 
-      setLead(leadData as LeadRecord)
-      setHasLead(true)
+      setLeads(leadsData as LeadRecord[])
+      setHasLeads(true)
 
+      const leadIds = leadsData.map(l => l.id)
       const [cyclesResponse, appointmentsResponse] = await Promise.all([
         supabase
           .from("admission_cycles")
@@ -212,9 +389,9 @@ export default function LeadSidePanel({
           .order("start_date", { ascending: false }),
         supabase
           .from("appointments")
-          .select("id, starts_at, ends_at, campus, type, status, notes")
+          .select("id, starts_at, ends_at, campus, type, status, notes, lead_id")
           .eq("organization_id", profile.organization_id)
-          .eq("lead_id", leadData.id)
+          .in("lead_id", leadIds)
           .order("starts_at", { ascending: true }),
       ])
 
@@ -225,13 +402,14 @@ export default function LeadSidePanel({
       setIsLoading(false)
     }
 
-    void loadLead()
+    void loadData()
 
     return () => {
       isMounted = false
     }
   }, [chatId, refreshKey, supabase])
 
+  // Subscriptions
   useEffect(() => {
     if (!chatId) return
     const channel = supabase
@@ -272,28 +450,6 @@ export default function LeadSidePanel({
     }
   }, [chatId, supabase])
 
-  const cycleName = useMemo(() => {
-    if (!lead?.cycle_id) return "Sin ciclo"
-    return cycles.find((cycle) => cycle.id === lead.cycle_id)?.name || "Sin ciclo"
-  }, [cycles, lead?.cycle_id])
-
-  const upcomingAppointment = useMemo(() => {
-    const now = Date.now()
-    return appointments.find((appointment) => {
-      const startsAt = new Date(appointment.starts_at).getTime()
-      return !Number.isNaN(startsAt) && startsAt >= now
-    })
-  }, [appointments])
-
-  const latestAppointment = useMemo(() => {
-    if (!appointments.length) return null
-    const past = appointments.filter((appointment) => {
-      const startsAt = new Date(appointment.starts_at).getTime()
-      return !Number.isNaN(startsAt) && startsAt < Date.now()
-    })
-    return past.length ? past[past.length - 1] : null
-  }, [appointments])
-
   const activeSession = useMemo(() => {
     if (!chatInfo?.active_session_id) return null
     return (
@@ -311,18 +467,20 @@ export default function LeadSidePanel({
       <div className="px-5 py-4 border-b border-[#d1d7db] dark:border-[#2a3942] flex items-start justify-between gap-4">
         <div className="space-y-1">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">
-            {lead ? "Detalle del lead" : "Resumen del chat"}
+            {leads.length > 0 ? "Detalle del lead" : "Resumen del chat"}
           </p>
           <h3 className="text-lg font-semibold text-foreground">
-            {lead?.student_name || chatInfo?.name || "Chat sin nombre"}
+            {chatInfo?.name || "Chat sin nombre"}
+            {leads.length > 0 && <span className="ml-2 text-sm font-normal text-muted-foreground">({leads.length} leads)</span>}
           </h3>
           <p className="text-xs text-muted-foreground">
             Ultima actividad: {formatRelativeDate(chatInfo?.updated_at)}
           </p>
         </div>
-        {lead ? (
-          <Button variant="ghost" size="icon" asChild title="Ver ficha">
-            <Link href={`/crm/leads/${lead.id}`}>
+        
+        {leads.length > 0 ? (
+          <Button variant="ghost" size="icon" asChild title="Ver fichas">
+            <Link href={`/crm/leads?chatId=${chatId}`}>
               <ExternalLink className="h-4 w-4" />
             </Link>
           </Button>
@@ -359,46 +517,11 @@ export default function LeadSidePanel({
               </div>
             </section>
 
-            <section className="rounded-xl border bg-card p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold">Sesiones</h4>
-                <Badge variant="outline">{sessions.length}</Badge>
-              </div>
-              {sessions.length ? (
-                <div className="space-y-3">
-                  {sessions.slice(0, 3).map((session) => {
-                    const lastActivity =
-                      session.last_response_at ||
-                      session.updated_at ||
-                      session.created_at
-                    return (
-                      <div key={session.id} className="rounded-lg border p-3 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <Badge variant="secondary" className="capitalize">
-                            {session.status || "active"}
-                          </Badge>
-                          <Badge variant={session.ai_enabled ? "default" : "outline"}>
-                            {session.ai_enabled ? "AI activo" : "AI apagado"}
-                          </Badge>
-                          <span className="text-muted-foreground">
-                            {formatRelativeDate(lastActivity)}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {session.summary || "Sin resumen para esta sesion."}
-                        </p>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No hay sesiones registradas.
-                </p>
-              )}
+             <section className="rounded-xl border bg-card p-4 space-y-3">
+               <CollapsibleSessions sessions={sessions} />
             </section>
 
-            {!hasLead ? (
+            {!hasLeads && !isLoading ? (
               <section className="rounded-xl border bg-card p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -417,7 +540,7 @@ export default function LeadSidePanel({
                       </SheetHeader>
                       <form action={createActionHandler} className="py-4 space-y-6">
                         <input type="hidden" name="chatId" value={chatId} />
-                        <section className="space-y-3">
+                         <section className="space-y-3">
                           <h4 className="text-sm font-semibold">Estudiante</h4>
                           <div className="grid gap-3 md:grid-cols-2">
                             <div className="space-y-1">
@@ -512,133 +635,33 @@ export default function LeadSidePanel({
               </section>
             ) : null}
 
-            {lead ? (
-              <>
-                <section className="rounded-xl border bg-card p-4 space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "capitalize border",
-                        STATUS_STYLES[lead.status] || "bg-muted text-foreground"
-                      )}
-                    >
-                      {statusLabel(lead.status)}
-                    </Badge>
-                    <Badge variant="secondary">{cycleName}</Badge>
-                    <Badge variant="secondary" className="capitalize">
-                      {lead.source || "Sin fuente"}
-                    </Badge>
-                  </div>
-                  <div className="grid gap-3 text-sm">
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                        Contacto
-                      </p>
-                      <p className="font-medium">
-                        {lead.contact_full_name || lead.contact_first_name || "N/A"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Mail className="h-4 w-4" />
-                      {lead.contact_email ? (
-                        <a
-                          href={`mailto:${lead.contact_email}`}
-                          className="text-sm hover:underline"
-                        >
-                          {lead.contact_email}
-                        </a>
-                      ) : (
-                        <span className="text-sm">Sin correo</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="h-4 w-4" />
-                      {lead.contact_phone ? (
-                        <a
-                          href={`tel:${lead.contact_phone}`}
-                          className="text-sm hover:underline"
-                        >
-                          {lead.contact_phone}
-                        </a>
-                      ) : (
-                        <span className="text-sm">Sin telefono</span>
-                      )}
-                    </div>
-                    <Separator />
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                          Grado
-                        </p>
-                        <p className="font-medium">{lead.grade_interest || "N/A"}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                          Escuela actual
-                        </p>
-                        <p className="font-medium">{lead.current_school || "N/A"}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <LeadEditButton
-                    lead={lead}
-                    updateLeadAction={updateLeadAction}
-                    cycles={cycles}
-                    className="w-full justify-center"
-                  />
-                </section>
+            {hasLeads && leads.length > 0 && (
+              <div className="space-y-4">
+                  {leads.map((lead) => {
+                      const leadCycleName = cycles.find((c) => c.id === lead.cycle_id)?.name || "Sin ciclo"
+                      const leadAppointments = appointments.filter(a => a.lead_id === lead.id)
+                      
+                      // Find upcoming appointment for THIS lead
+                      const upcoming = leadAppointments.find((appointment) => {
+                        const startsAt = new Date(appointment.starts_at).getTime()
+                        return !Number.isNaN(startsAt) && startsAt >= Date.now()
+                      })
 
-                <section className="rounded-xl border bg-card p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold">Visitas</h4>
-                    <Badge variant="outline">{appointments.length}</Badge>
-                  </div>
-                  {upcomingAppointment ? (
-                    <div className="rounded-lg border p-3 bg-muted/10 space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-medium">
-                        <CalendarClock className="h-4 w-4 text-primary" />
-                        {new Date(upcomingAppointment.starts_at).toLocaleString("es-MX", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <Badge variant="secondary">
-                          {statusLabel(upcomingAppointment.status || "scheduled")}
-                        </Badge>
-                        {upcomingAppointment.type ? (
-                          <Badge variant="outline">{upcomingAppointment.type}</Badge>
-                        ) : null}
-                      </div>
-                      {upcomingAppointment.campus ? (
-                        <p className="text-xs text-muted-foreground">
-                          Campus: {upcomingAppointment.campus}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No hay visitas programadas.
-                    </p>
-                  )}
-                  {latestAppointment ? (
-                    <div className="text-xs text-muted-foreground">
-                      Ultima visita:{" "}
-                      {new Date(latestAppointment.starts_at).toLocaleDateString("es-MX")}
-                    </div>
-                  ) : null}
-                </section>
-
-                <section className="rounded-xl border bg-card p-4 space-y-3">
-                  <h4 className="text-sm font-semibold">Notas internas</h4>
-                  <LeadNoteForm leadId={lead.id} sendNoteAction={addLeadNoteAction} />
-                </section>
-              </>
-            ) : null}
+                      return (
+                        <LeadCard 
+                            key={lead.id} 
+                            lead={lead} 
+                            cycleName={leadCycleName}
+                            updateLeadAction={updateLeadAction}
+                            cycles={cycles}
+                            upcomingAppointment={upcoming as Appointment | undefined}
+                            totalAppointments={leadAppointments.length}
+                            addLeadNoteAction={addLeadNoteAction}
+                        />
+                      )
+                  })}
+              </div>
+            )}
           </>
         )}
       </div>

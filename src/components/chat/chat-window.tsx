@@ -108,10 +108,19 @@ export default function ChatWindow() {
     const handoverRequested =
         Boolean(chat?.requested_handoff) ||
         messages.some((message) => message.payload?.handover);
+    const lastReceivedMessage = [...messages].reverse().find((m) => m.status === "received");
+    const lastReceivedTime = lastReceivedMessage
+        ? new Date(lastReceivedMessage.wa_timestamp || lastReceivedMessage.created_at).getTime()
+        : 0;
+    const now = Date.now();
+    const isWithin24Hours = (now - lastReceivedTime) < 24 * 60 * 60 * 1000;
+
     const isAiLocked =
         Boolean(activeSession?.ai_enabled) &&
         (activeSession?.status ?? "active") === "active" &&
         !activeSession?.closed_at;
+    
+    const isInputLocked = !isWithin24Hours || isAiLocked;
 
     const onEmojiClick = (emojiData: EmojiClickData) => {
         setMessageInput((prev) => prev + emojiData.emoji);
@@ -233,7 +242,7 @@ export default function ChatWindow() {
             onDrop={(e) => {
                 e.preventDefault();
                 setIsDragging(false);
-                if (isAiLocked) return;
+                if (isInputLocked) return;
                 const file = e.dataTransfer.files?.[0];
                 if (file) {
                     void handleFileSelection(file);
@@ -282,6 +291,12 @@ export default function ChatWindow() {
                         )}>
                             {activeSession?.ai_enabled ? "AI activo" : "AI apagado"}
                         </span>
+                        <span className={cn(
+                            "rounded-full border px-2 py-0.5",
+                            isWithin24Hours ? "bg-green-50 text-green-800 border-green-200" : "bg-orange-50 text-orange-800 border-orange-200"
+                        )}>
+                            {isWithin24Hours ? "Ventana 24h Activa" : "Fuera de Ventana 24h"}
+                        </span>
                     </div>
                     <div className="flex bg-white/50 dark:bg-white/10 rounded-full p-1 border border-transparent hover:border-black/5 dark:hover:border-white/5 transition-colors">
                         <Button
@@ -320,7 +335,7 @@ export default function ChatWindow() {
                 </div>
             )}
 
-            {isAiLocked && (
+            {isAiLocked && isWithin24Hours && (
                 <div className="mx-4 mt-3 rounded-md border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 shadow-sm z-10 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></div>
@@ -329,6 +344,13 @@ export default function ChatWindow() {
                     <Button size="sm" variant="outline" onClick={handleDisableAi}>
                         Desactivar AI
                     </Button>
+                </div>
+            )}
+
+            {!isWithin24Hours && (
+                <div className="mx-4 mt-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900 shadow-sm z-10 flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-orange-500"></div>
+                    Fuera de la ventana de 24h. Solo puedes enviar plantillas (próximamente).
                 </div>
             )}
 
@@ -456,7 +478,7 @@ const isReceived = message.status === 'received';
                 onDrop={(e) => {
                     e.preventDefault();
                     setIsDragging(false);
-                    if (isAiLocked) return;
+                    if (isInputLocked) return;
                     const file = e.dataTransfer.files?.[0];
                     if (file) {
                         void handleFileSelection(file);
@@ -487,7 +509,7 @@ const isReceived = message.status === 'received';
                         variant="ghost"
                         size="icon"
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                        disabled={isAiLocked}
+                        disabled={isInputLocked}
                         className={cn(
                             "text-[#54656f] dark:text-[#aebac1] hover:text-foreground h-10 w-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
                             showEmojiPicker && "bg-black/10 dark:bg-white/10"
@@ -501,7 +523,7 @@ const isReceived = message.status === 'received';
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                disabled={isAiLocked}
+                                disabled={isInputLocked}
                                 className="h-10 w-10 text-[#54656f] dark:text-[#aebac1] hover:text-foreground rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
                             >
                                 <Plus className="h-6 w-6" />
@@ -538,8 +560,9 @@ const isReceived = message.status === 'received';
                 <form
                     action={async (formData) => {
                         if (!chatId) return;
-                        if (isAiLocked) {
-                            toast.error("Desactiva el AI para enviar mensajes.");
+                        if (isInputLocked) {
+                            if (!isWithin24Hours) toast.error("Fuera de la ventana de 24h.");
+                            else toast.error("Desactiva el AI para enviar mensajes.");
                             return;
                         }
                         formData.append("chatId", chatId);
@@ -603,7 +626,7 @@ const isReceived = message.status === 'received';
                                 className="w-full py-6 bg-white dark:bg-[#2a3942] border-none focus-visible:ring-0 rounded-lg text-base shadow-sm placeholder:text-[#54656f] dark:placeholder:text-[#8696a0] dark:text-[#e9edef]"
                                 required={!attachment}
                                 autoComplete="off"
-                                disabled={isAiLocked}
+                                disabled={isInputLocked}
                             />
                         </div>
                     )}
@@ -620,7 +643,7 @@ const isReceived = message.status === 'received';
                                 form?.requestSubmit();
                             }}
                             className="h-10 w-10 rounded-full shadow-sm bg-[#00a884] hover:bg-[#008f6f] text-white transition-all transform scale-100"
-                            disabled={isAiLocked}
+                            disabled={isInputLocked}
                         >
                             <Send className="h-5 w-5 ml-0.5" />
                         </Button>
@@ -633,7 +656,7 @@ const isReceived = message.status === 'received';
                                 "h-10 w-10 rounded-full text-[#54656f] dark:text-[#aebac1] hover:bg-black/5 dark:hover:bg-white/10 transition-colors",
                                 isRecording && "text-red-500 hover:text-red-600 animate-pulse bg-red-50"
                             )}
-                            disabled={isAiLocked}
+                            disabled={isInputLocked}
                             onClick={async () => {
                                 if (isRecording) {
                                     stopRecording();
