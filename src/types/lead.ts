@@ -66,6 +66,12 @@ export type LeadRecord = {
   nationality?: string | null
   native_language?: string | null
   secondary_language?: string | null
+  decision_maker_name?: string | null
+  decision_maker_role?: string | null
+  decision_date?: string | null
+  budget_range?: string | null
+  visit_notes?: string | null
+  next_steps?: string | null
   created_at: string
   updated_at: string
   chat?: {
