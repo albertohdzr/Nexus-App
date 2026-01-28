@@ -95,6 +95,9 @@ export interface LeadNote {
     created_at: string;
     created_by: string | null;
     type: string;
+    creator?: {
+        full_name: string | null;
+    } | null;
 }
 
 /**

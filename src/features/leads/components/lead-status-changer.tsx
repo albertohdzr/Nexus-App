@@ -66,7 +66,9 @@ export function LeadStatusChanger({
     const formData = new FormData()
     formData.set("lead_id", leadId)
     formData.set("status", newStatus)
-    formAction(formData)
+    startTransition(() => {
+      formAction(formData)
+    })
   }
 
   // Agrupar estados por categoría

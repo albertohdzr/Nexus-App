@@ -93,7 +93,10 @@ export async function getLeadDetail(
         notes,
         created_at,
         created_by,
-        type
+        type,
+        creator:user_profiles!lead_activities_created_by_fkey (
+          full_name
+        )
       )
     `)
         .eq("id", leadId)
@@ -110,8 +113,25 @@ export async function getLeadDetail(
     // Normalizar chat
     const chat = Array.isArray(lead.chat) ? lead.chat[0] : lead.chat;
 
+    // Normalizar actividades - Supabase devuelve creator como array
+    const rawActivities = (lead.notes as Array<{
+        id: string;
+        subject: string | null;
+        notes: string | null;
+        created_at: string;
+        created_by: string | null;
+        type: string;
+        creator: Array<{ full_name: string | null }> | null;
+    }>) || [];
+
+    const allActivities: LeadNote[] = rawActivities.map((activity) => ({
+        ...activity,
+        creator: Array.isArray(activity.creator)
+            ? activity.creator[0] || null
+            : activity.creator,
+    }));
+
     // Separar notas y emails
-    const allActivities = (lead.notes as LeadNote[]) || [];
     const notes = allActivities.filter((a) => a.type === "note");
     const emails = allActivities.filter((a) => a.type === "email");
 

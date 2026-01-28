@@ -159,10 +159,10 @@ export function LeadNotesCard({
                   {formatRelativeDate(note.created_at)}
                 </span>
               </div>
-              {note.created_by && (
+              {note.creator?.full_name && (
                 <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                   <User className="size-3" />
-                  {note.created_by}
+                  {note.creator.full_name}
                 </p>
               )}
             </div>

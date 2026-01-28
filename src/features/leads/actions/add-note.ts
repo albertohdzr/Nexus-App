@@ -60,10 +60,11 @@ export async function addNote(
     // Insertar nota en lead_activities
     const { error } = await supabase.from("lead_activities").insert({
         lead_id: leadId,
+        organization_id: profile.organization_id,
         type: "note",
         subject: subject?.trim() || null,
         notes: content.trim(),
-        created_by: profile.full_name || user.email || user.id,
+        created_by: user.id,
     });
 
     if (error) {
