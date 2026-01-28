@@ -4,7 +4,7 @@
  */
 
 import Link from "next/link"
-import { ArrowLeft, Edit, MessageSquare } from "lucide-react"
+import { ArrowLeft, MessageSquare } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
 import { SourceBadge } from "./source-badge"
@@ -14,12 +14,14 @@ interface LeadDetailHeaderProps {
   lead: LeadDetail
   cycleName?: string
   children?: React.ReactNode // Para el status changer (client component)
+  editButton?: React.ReactNode // Para el botón de editar (client component)
 }
 
 export function LeadDetailHeader({
   lead,
   cycleName = "Sin ciclo",
   children,
+  editButton,
 }: LeadDetailHeaderProps) {
   return (
     <div className="flex flex-col gap-4 pb-6 border-b">
@@ -41,10 +43,7 @@ export function LeadDetailHeader({
               </Link>
             </Button>
           )}
-          <Button variant="outline" size="sm" className="gap-2">
-            <Edit className="size-4" />
-            <span className="hidden sm:inline">Editar</span>
-          </Button>
+          {editButton}
         </div>
       </div>
 

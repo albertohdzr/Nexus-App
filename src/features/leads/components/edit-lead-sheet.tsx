@@ -1,8 +1,8 @@
 "use client"
 
 /**
- * Create Lead Sheet - Client Component
- * Panel lateral para crear un nuevo lead con UI mejorado
+ * Edit Lead Sheet - Client Component
+ * Panel lateral para editar la información de un lead
  */
 
 import { useActionState, useEffect, useState } from "react"
@@ -13,11 +13,10 @@ import {
   Phone, 
   Mail, 
   School,
-  Users,
-  MapPin,
   Loader2,
   ChevronDown,
   ChevronUp,
+  Save,
 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Input } from "@/src/components/ui/input"
@@ -41,15 +40,14 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/src/components/ui/collapsible"
-import { cn } from "@/src/lib/utils"
-import { createLead } from "../actions"
-import { LEAD_SOURCES, LEAD_DIVISIONS } from "../lib/constants"
-import type { CreateLeadActionState } from "../types"
+import { updateLead } from "../actions"
+import { LEAD_DIVISIONS } from "../lib/constants"
+import type { LeadDetail, UpdateLeadActionState } from "../types"
 
-interface CreateLeadSheetProps {
+interface EditLeadSheetProps {
+  lead: LeadDetail
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: (leadId: string) => void
 }
 
 function FormSection({
@@ -57,18 +55,16 @@ function FormSection({
   icon: Icon,
   children,
   defaultOpen = true,
-  className,
 }: {
   title: string
   icon: React.ComponentType<{ className?: string }>
   children: React.ReactNode
   defaultOpen?: boolean
-  className?: string
 }) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className={className}>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <CollapsibleTrigger asChild>
         <button
           type="button"
@@ -94,26 +90,25 @@ function FormSection({
   )
 }
 
-export function CreateLeadSheet({
+export function EditLeadSheet({
+  lead,
   open,
   onOpenChange,
-  onCreated,
-}: CreateLeadSheetProps) {
+}: EditLeadSheetProps) {
   const [state, formAction, pending] = useActionState<
-    CreateLeadActionState,
+    UpdateLeadActionState,
     FormData
-  >(createLead, {})
+  >(updateLead, {})
 
   useEffect(() => {
-    if (state.success && state.leadId) {
+    if (state.success) {
       toast.success(state.success)
       onOpenChange(false)
-      onCreated(state.leadId)
     }
     if (state.error) {
       toast.error(state.error)
     }
-  }, [state, onOpenChange, onCreated])
+  }, [state, onOpenChange])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -121,32 +116,34 @@ export function CreateLeadSheet({
         <div className="sticky top-0 z-10 bg-background border-b px-6 py-5">
           <SheetHeader className="space-y-1.5">
             <SheetTitle className="text-xl flex items-center gap-2">
-              <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10">
-                <Users className="size-4.5 text-primary" />
+              <div className="flex size-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 to-amber-50">
+                <Save className="size-4.5 text-amber-600" />
               </div>
-              Nuevo Lead
+              Editar Lead
             </SheetTitle>
             <SheetDescription className="text-sm">
-              Captura la información del prospecto para iniciar el seguimiento.
+              Actualiza la información del prospecto.
             </SheetDescription>
           </SheetHeader>
         </div>
 
         <form action={formAction} className="px-6 py-4">
+          <input type="hidden" name="lead_id" value={lead.id} />
+
           {/* Student Information */}
           <FormSection title="Información del Estudiante" icon={GraduationCap} defaultOpen={true}>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="student_first_name" className="text-xs text-muted-foreground">
-                    Nombre *
+                    Nombre
                   </Label>
                   <Input
                     id="student_first_name"
                     name="student_first_name"
+                    defaultValue={lead.student_first_name || ""}
                     placeholder="Juan"
                     className="h-9"
-                    required
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -156,6 +153,7 @@ export function CreateLeadSheet({
                   <Input
                     id="student_middle_name"
                     name="student_middle_name"
+                    defaultValue={lead.student_middle_name || ""}
                     placeholder="Carlos"
                     className="h-9"
                   />
@@ -164,14 +162,14 @@ export function CreateLeadSheet({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="student_last_name_paternal" className="text-xs text-muted-foreground">
-                    Apellido paterno *
+                    Apellido paterno
                   </Label>
                   <Input
                     id="student_last_name_paternal"
                     name="student_last_name_paternal"
+                    defaultValue={lead.student_last_name_paternal || ""}
                     placeholder="García"
                     className="h-9"
-                    required
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -181,6 +179,7 @@ export function CreateLeadSheet({
                   <Input
                     id="student_last_name_maternal"
                     name="student_last_name_maternal"
+                    defaultValue={lead.student_last_name_maternal || ""}
                     placeholder="López"
                     className="h-9"
                   />
@@ -189,21 +188,21 @@ export function CreateLeadSheet({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="grade_interest" className="text-xs text-muted-foreground">
-                    Grado de interés *
+                    Grado de interés
                   </Label>
                   <Input
                     id="grade_interest"
                     name="grade_interest"
+                    defaultValue={lead.grade_interest || ""}
                     placeholder="Ej: 3° Primaria"
                     className="h-9"
-                    required
                   />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="division" className="text-xs text-muted-foreground">
                     División
                   </Label>
-                  <Select name="division">
+                  <Select name="division" defaultValue={lead.division || ""}>
                     <SelectTrigger className="h-9">
                       <SelectValue placeholder="Seleccionar" />
                     </SelectTrigger>
@@ -217,17 +216,32 @@ export function CreateLeadSheet({
                   </Select>
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="current_school" className="text-xs text-muted-foreground">
-                  Escuela actual
-                </Label>
-                <div className="relative">
-                  <School className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="current_school" className="text-xs text-muted-foreground">
+                    Escuela actual
+                  </Label>
+                  <div className="relative">
+                    <School className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <Input
+                      id="current_school"
+                      name="current_school"
+                      defaultValue={lead.current_school || ""}
+                      placeholder="Nombre de la escuela"
+                      className="h-9 pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="school_year" className="text-xs text-muted-foreground">
+                    Ciclo escolar
+                  </Label>
                   <Input
-                    id="current_school"
-                    name="current_school"
-                    placeholder="Nombre de la escuela actual"
-                    className="h-9 pl-9"
+                    id="school_year"
+                    name="school_year"
+                    defaultValue={lead.school_year || ""}
+                    placeholder="2025-2026"
+                    className="h-9"
                   />
                 </div>
               </div>
@@ -242,14 +256,14 @@ export function CreateLeadSheet({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="contact_first_name" className="text-xs text-muted-foreground">
-                    Nombre *
+                    Nombre
                   </Label>
                   <Input
                     id="contact_first_name"
                     name="contact_first_name"
+                    defaultValue={lead.contact_first_name || ""}
                     placeholder="María"
                     className="h-9"
-                    required
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -259,6 +273,7 @@ export function CreateLeadSheet({
                   <Input
                     id="contact_middle_name"
                     name="contact_middle_name"
+                    defaultValue={lead.contact_middle_name || ""}
                     placeholder="Elena"
                     className="h-9"
                   />
@@ -267,14 +282,14 @@ export function CreateLeadSheet({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="contact_last_name_paternal" className="text-xs text-muted-foreground">
-                    Apellido paterno *
+                    Apellido paterno
                   </Label>
                   <Input
                     id="contact_last_name_paternal"
                     name="contact_last_name_paternal"
+                    defaultValue={lead.contact_last_name_paternal || ""}
                     placeholder="López"
                     className="h-9"
-                    required
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -284,6 +299,7 @@ export function CreateLeadSheet({
                   <Input
                     id="contact_last_name_maternal"
                     name="contact_last_name_maternal"
+                    defaultValue={lead.contact_last_name_maternal || ""}
                     placeholder="Martínez"
                     className="h-9"
                   />
@@ -300,6 +316,7 @@ export function CreateLeadSheet({
                       id="contact_email"
                       name="contact_email"
                       type="email"
+                      defaultValue={lead.contact_email || ""}
                       placeholder="correo@ejemplo.com"
                       className="h-9 pl-9"
                     />
@@ -307,7 +324,7 @@ export function CreateLeadSheet({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="contact_phone" className="text-xs text-muted-foreground">
-                    Teléfono *
+                    Teléfono
                   </Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -315,9 +332,9 @@ export function CreateLeadSheet({
                       id="contact_phone"
                       name="contact_phone"
                       type="tel"
+                      defaultValue={lead.contact_phone || ""}
                       placeholder="+52 55 1234 5678"
                       className="h-9 pl-9"
-                      required
                     />
                   </div>
                 </div>
@@ -325,57 +342,30 @@ export function CreateLeadSheet({
             </div>
           </FormSection>
 
-          <div className="border-t" />
-
-          {/* Source & Additional */}
-          <FormSection title="Origen del Lead" icon={MapPin} defaultOpen={false}>
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="source" className="text-xs text-muted-foreground">
-                  Fuente
-                </Label>
-                <Select name="source" defaultValue="direct">
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Selecciona una fuente" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LEAD_SOURCES.map((source) => (
-                      <SelectItem key={source} value={source} className="capitalize">
-                        {source.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </FormSection>
-
           {/* Sticky footer */}
           <div className="sticky bottom-0 bg-background pt-4 pb-2 border-t mt-4 -mx-6 px-6">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">
-                * Campos requeridos
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => onOpenChange(false)}
-                  disabled={pending}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={pending} className="min-w-[120px]">
-                  {pending ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin mr-2" />
-                      Creando...
-                    </>
-                  ) : (
-                    "Crear Lead"
-                  )}
-                </Button>
-              </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                disabled={pending}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={pending} className="min-w-[140px]">
+                {pending ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin mr-2" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="size-4 mr-2" />
+                    Guardar cambios
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </form>

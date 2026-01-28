@@ -90,7 +90,7 @@ export async function updateLead(
         .filter(Boolean)
         .join(" ");
 
-    // Actualizar lead
+    // Actualizar lead (student_name y contact_full_name son columnas generadas)
     const { error } = await supabase
         .from("leads")
         .update({
@@ -98,12 +98,10 @@ export async function updateLead(
             student_middle_name: studentMiddleName || null,
             student_last_name_paternal: studentLastNamePaternal || null,
             student_last_name_maternal: studentLastNameMaternal || null,
-            student_name: studentName || null,
             contact_first_name: contactFirstName || null,
             contact_middle_name: contactMiddleName || null,
             contact_last_name_paternal: contactLastNamePaternal || null,
             contact_last_name_maternal: contactLastNameMaternal || null,
-            contact_full_name: contactFullName || null,
             contact_email: contactEmail || null,
             contact_phone: contactPhone || null,
             grade_interest: gradeInterest || null,

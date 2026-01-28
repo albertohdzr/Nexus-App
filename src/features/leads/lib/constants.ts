@@ -75,6 +75,17 @@ export const LEAD_SOURCES = [
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 
 /**
+ * Divisiones escolares
+ */
+export const LEAD_DIVISIONS = [
+    { value: "prenursery", label: "Pre Nursery" },
+    { value: "early_child", label: "Nursery / Preescolar" },
+    { value: "elementary", label: "Primaria" },
+    { value: "middle_school", label: "Secundaria" },
+    { value: "high_school", label: "Preparatoria" },
+] as const;
+
+/**
  * Configuración de paginación por defecto
  */
 export const DEFAULT_PAGE_SIZE = 10;

@@ -17,6 +17,7 @@ import {
   LeadNotesCard,
   LeadStatusChanger,
   StatusHistoryTimeline,
+  EditLeadButton,
   getLeadDetail,
   getLeadStatusHistory,
   getLeadAppointments,
@@ -64,8 +65,12 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
 
   return (
     <div className="flex flex-col gap-6 pb-8">
-      {/* Header with status changer */}
-      <LeadDetailHeader lead={lead} cycleName={cycleName}>
+      {/* Header with status changer and edit button */}
+      <LeadDetailHeader 
+        lead={lead} 
+        cycleName={cycleName}
+        editButton={<EditLeadButton lead={lead} />}
+      >
         <LeadStatusChanger
           leadId={lead.id}
           currentStatus={lead.status}

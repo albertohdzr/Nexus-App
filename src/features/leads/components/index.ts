@@ -25,3 +25,5 @@ export { StatusHistoryTimeline } from "./status-history-timeline";
 // Client components
 export { LeadStatusChanger } from "./lead-status-changer";
 export { LeadNotesCard } from "./lead-notes-card";
+export { EditLeadSheet } from "./edit-lead-sheet";
+export { EditLeadButton } from "./edit-lead-button";
