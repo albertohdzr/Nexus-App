@@ -9,7 +9,7 @@ export * from "./components";
 // Actions
 export * from "./actions";
 
-// Services
+// Services - leads list
 export {
     getCurrentUserOrganizationId,
     getLeadById,
@@ -17,6 +17,14 @@ export {
     getLeadsPaginated,
     getLeadsStats,
 } from "./services/leads-service";
+
+// Services - lead detail
+export {
+    getAdmissionCycles,
+    getLeadAppointments,
+    getLeadDetail,
+    getLeadStatusHistory,
+} from "./services/lead-detail-service";
 
 // Types
 export * from "./types";

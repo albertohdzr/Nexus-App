@@ -23,6 +23,7 @@ export interface LeadRow {
     wa_id: string | null;
     ai_summary: string | null;
     ai_metadata: Record<string, unknown> | null;
+    metadata: Record<string, unknown> | null;
     contact_email: string | null;
     contact_phone: string | null;
     contact_first_name: string | null;
@@ -31,6 +32,18 @@ export interface LeadRow {
     contact_last_name_maternal: string | null;
     contact_full_name: string | null;
     student_name: string | null;
+    division: string | null;
+    // Address fields
+    address_street: string | null;
+    address_number: string | null;
+    address_neighborhood: string | null;
+    address_postal_code: string | null;
+    address_city: string | null;
+    address_state: string | null;
+    address_country: string | null;
+    nationality: string | null;
+    native_language: string | null;
+    secondary_language: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -46,6 +59,20 @@ export interface ChatSession {
     closed_at: string | null;
 }
 
+export interface ChatSessionWithMessages extends ChatSession {
+    messages?: LeadMessage[] | null;
+}
+
+export interface LeadMessage {
+    id: string;
+    role: string;
+    direction: string | null;
+    body: string | null;
+    media_url: string | null;
+    created_at: string;
+    sender_name: string | null;
+}
+
 export interface LeadChat {
     id: string;
     wa_id: string | null;
@@ -54,11 +81,84 @@ export interface LeadChat {
     chat_sessions: ChatSession[] | null;
 }
 
+export interface LeadChatWithMessages extends Omit<LeadChat, "chat_sessions"> {
+    chat_sessions: ChatSessionWithMessages[] | null;
+}
+
 /**
- * LeadRecord con relaciones expandidas
+ * Nota o actividad del lead
+ */
+export interface LeadNote {
+    id: string;
+    subject: string | null;
+    notes: string | null;
+    created_at: string;
+    created_by: string | null;
+    type: string;
+}
+
+/**
+ * Historial de cambios de estado
+ */
+export interface StatusHistoryEntry {
+    id: string;
+    lead_id: string;
+    previous_status: string | null;
+    new_status: string;
+    changed_by: string | null;
+    changed_by_name: string | null;
+    reason: string | null;
+    notes: string | null;
+    created_at: string;
+}
+
+/**
+ * Cita/Appointment
+ */
+export interface LeadAppointment {
+    id: string;
+    starts_at: string;
+    ends_at: string;
+    campus: string | null;
+    type: string | null;
+    status: string;
+    notes: string | null;
+}
+
+/**
+ * Ciclo de admisión
+ */
+export interface AdmissionCycle {
+    id: string;
+    name: string;
+}
+
+/**
+ * LeadRecord básico con relaciones
  */
 export interface LeadRecord extends LeadRow {
     chat: LeadChat | null;
+}
+
+/**
+ * LeadRecord extendido para página de detalle
+ */
+export interface LeadDetail extends LeadRow {
+    chat: LeadChatWithMessages | null;
+    notes: LeadNote[] | null;
+    emails: LeadNote[] | null;
+    status_history?: StatusHistoryEntry[] | null;
+}
+
+/**
+ * Tarea derivada del lead
+ */
+export interface LeadTask {
+    id: string;
+    title: string;
+    description: string;
+    actionLabel: string;
+    field?: string;
 }
 
 /**

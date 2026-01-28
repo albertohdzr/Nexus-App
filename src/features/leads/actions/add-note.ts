@@ -2,7 +2,7 @@
 
 /**
  * Add Note Server Action
- * Agrega una nota a un lead
+ * Agrega una nota a un lead usando la tabla lead_activities
  */
 
 import { revalidatePath } from "next/cache";
@@ -30,18 +30,20 @@ export async function addNote(
 
     const leadId = formData.get("lead_id") as string;
     const content = formData.get("content") as string;
+    const subject = formData.get("subject") as string;
 
     if (!leadId || !content?.trim()) {
         return { error: "El contenido de la nota es requerido" };
     }
 
-    // Verificar permisos
+    // Obtener perfil y nombre del usuario
     const { data: profile } = await supabase
         .from("user_profiles")
-        .select("organization_id")
+        .select("organization_id, full_name")
         .eq("id", user.id)
         .single();
 
+    // Verificar que el lead pertenece a la organización
     const { data: lead } = await supabase
         .from("leads")
         .select("organization_id")
@@ -55,11 +57,13 @@ export async function addNote(
         return { error: "No tienes permiso para agregar notas a este lead" };
     }
 
-    // Insertar nota
-    const { error } = await supabase.from("lead_notes").insert({
+    // Insertar nota en lead_activities
+    const { error } = await supabase.from("lead_activities").insert({
         lead_id: leadId,
-        content: content.trim(),
-        created_by: user.id,
+        type: "note",
+        subject: subject?.trim() || null,
+        notes: content.trim(),
+        created_by: profile.full_name || user.email || user.id,
     });
 
     if (error) {
