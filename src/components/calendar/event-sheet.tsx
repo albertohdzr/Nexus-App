@@ -29,7 +29,7 @@ import { CalendarEvent } from "@/src/types/calendar";
 import { useState } from "react";
 import { Kbd } from "@/src/components/ui/kbd";
 
-import { deleteCalendarEvent } from "@/src/app/(dashboard)/crm/calendar/actions";
+import { deleteCalendarEvent } from "@features/appointments";
 import { useCalendarStore } from "@/src/store/calendar-store";
 
 

@@ -23,7 +23,7 @@ import {
 import { useCalendarStore } from "@/src/store/calendar-store";
 import { cn } from "@/src/lib/utils";
 import { CalendarEvent } from "@/src/types/calendar";
-import { createCalendarEvent, updateCalendarEvent } from "@/src/app/(dashboard)/crm/calendar/actions";
+import { createCalendarEvent, updateCalendarEvent } from "@features/appointments";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/src/components/ui/select";
 
 interface CreateEventDialogProps {

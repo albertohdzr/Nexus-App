@@ -2,7 +2,7 @@ import { CalendarProvider } from "@/src/store/calendar-store";
 import { CalendarHeader } from "@/src/components/calendar/calendar-header";
 import { CalendarControls } from "@/src/components/calendar/calendar-controls";
 import { CalendarView } from "@/src/components/calendar/calendar-view";
-import { getCalendarEvents, getCalendarLeads, getCalendarSlots } from "./actions";
+import { getCalendarEvents, getCalendarLeads, getCalendarSlots } from "@features/appointments/services/calendar-service";
 import { format, subWeeks, addWeeks } from "date-fns";
 
 export default async function CalendarPage() {
