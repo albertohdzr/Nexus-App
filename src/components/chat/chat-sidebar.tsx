@@ -8,7 +8,7 @@ import { cn } from "@/src/lib/utils";
 import { createClient } from "@/src/lib/supabase/client";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { Hand, Plus, Search, MessageSquarePlus, Users, CircleDashed, MessageSquare } from "lucide-react";
+import { Hand, Search, MessageSquarePlus, Users, CircleDashed, MessageSquare } from "lucide-react";
 import { Chat } from "@/src/types/chat";
 
 export default function ChatSidebar() {

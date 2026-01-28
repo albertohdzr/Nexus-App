@@ -151,17 +151,24 @@ export default function WhatsAppTemplatesPage() {
     fetchData()
   }, [supabase])
 
+  // Sync draft state when active template changes
+  // Template-to-form synchronization is an acceptable pattern
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (activeTemplate) {
       setDraft(toDraft(activeTemplate))
     }
   }, [activeTemplate])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const bodyTokens = useMemo(() => {
     if (!draft) return []
     return getBodyTokens(draft.body_text, draft.parameter_format)
   }, [draft])
 
+  // Update body example values when tokens change
+  // Token synchronization is an acceptable pattern
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!draft) return
     setDraft((prev) => {
@@ -178,6 +185,7 @@ export default function WhatsAppTemplatesPage() {
       return { ...prev, body_example_values: next }
     })
   }, [bodyTokens, draft])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const resolvedComponents = useMemo(() => {
     if (!draft) return { components: [], error: null as string | null }

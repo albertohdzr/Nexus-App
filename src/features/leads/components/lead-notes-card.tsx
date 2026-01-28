@@ -5,9 +5,9 @@
 
 "use client"
 
-import { useState, useActionState, useEffect } from "react"
+import { startTransition, useState, useActionState } from "react"
 import { toast } from "sonner"
-import { Plus, StickyNote, Clock, User, Loader2 } from "lucide-react"
+import { Plus, StickyNote, User, Loader2 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
 import { Textarea } from "@/src/components/ui/textarea"
@@ -42,20 +42,28 @@ export function LeadNotesCard({
   addNoteAction,
 }: LeadNotesCardProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [state, formAction, pending] = useActionState<NoteActionState, FormData>(
-    addNoteAction,
+
+  // Wrap the action to handle success/error with callbacks
+  const wrappedAction = async (
+    prevState: NoteActionState,
+    formData: FormData
+  ): Promise<NoteActionState> => {
+    const result = await addNoteAction(prevState, formData)
+    // Handle result in callback to avoid setState in effect
+    if (result.success) {
+      toast.success(result.success)
+      startTransition(() => setIsOpen(false))
+    }
+    if (result.error) {
+      toast.error(result.error)
+    }
+    return result
+  }
+
+  const [, formAction, pending] = useActionState<NoteActionState, FormData>(
+    wrappedAction,
     {}
   )
-
-  useEffect(() => {
-    if (state.success) {
-      toast.success(state.success)
-      setIsOpen(false)
-    }
-    if (state.error) {
-      toast.error(state.error)
-    }
-  }, [state])
 
   // Ordenar notas por fecha descendente
   const sortedNotes = [...notes].sort(

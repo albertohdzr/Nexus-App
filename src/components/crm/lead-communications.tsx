@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { ChevronDown, Mail, MessageSquare, Send } from "lucide-react"
 import { Badge } from "@/src/components/ui/badge"
-import { Button } from "@/src/components/ui/button"
 import { cn } from "@/src/lib/utils"
 import { formatRelativeDate, statusLabel } from "@/src/lib/lead"
 import type { LeadChatSession, LeadMessage, LeadNote } from "@/src/types/lead"

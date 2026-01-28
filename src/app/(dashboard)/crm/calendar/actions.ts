@@ -1,7 +1,11 @@
 "use server";
 
 import { createClient } from "@/src/lib/supabase/server";
-import { CalendarEvent, CalendarLeadOption, CalendarSlotOption } from "@/src/types/calendar";
+import {
+    CalendarEvent,
+    CalendarLeadOption,
+    CalendarSlotOption,
+} from "@/src/types/calendar";
 import { format } from "date-fns";
 import { revalidatePath } from "next/cache";
 
@@ -48,10 +52,40 @@ export async function getCalendarEvents(
         return [];
     }
 
+    // Define the shape of the appointment with joined data
+    interface AppointmentWithRelations {
+        id: string;
+        starts_at: string;
+        ends_at: string | null;
+        status: string;
+        type: string | null;
+        campus: string | null;
+        lead_id: string | null;
+        slot_id: string | null;
+        notes: string | null;
+        lead: {
+            student_name: string | null;
+            contact_full_name: string | null;
+            contact_email: string | null;
+            contact_phone: string | null;
+        } | {
+            student_name: string | null;
+            contact_full_name: string | null;
+            contact_email: string | null;
+            contact_phone: string | null;
+        }[] | null;
+        created_by: { full_name: string | null; email: string | null } | {
+            full_name: string | null;
+            email: string | null;
+        }[] | null;
+    }
+
     // Map to CalendarEvent
-    return appointments.map((apt: any) => {
+    return (appointments as AppointmentWithRelations[]).map((apt) => {
         const lead = Array.isArray(apt.lead) ? apt.lead[0] : apt.lead;
-        const createdBy = Array.isArray(apt.created_by) ? apt.created_by[0] : apt.created_by;
+        const createdBy = Array.isArray(apt.created_by)
+            ? apt.created_by[0]
+            : apt.created_by;
         const start = new Date(apt.starts_at);
         const end = apt.ends_at ? new Date(apt.ends_at) : start;
 
@@ -73,15 +107,15 @@ export async function getCalendarEvents(
             endTime: endTimeStr,
             participants: [leadName, organizerName].filter(Boolean),
             status: apt.status,
-            type: apt.type,
-            campus: apt.campus,
-            leadId: apt.lead_id,
-            slotId: apt.slot_id,
-            notes: apt.notes,
+            type: apt.type ?? undefined,
+            campus: apt.campus ?? undefined,
+            leadId: apt.lead_id ?? undefined,
+            slotId: apt.slot_id ?? undefined,
+            notes: apt.notes ?? undefined,
             leadName,
-            leadContactName: lead?.contact_full_name,
-            leadEmail: lead?.contact_email,
-            leadPhone: lead?.contact_phone,
+            leadContactName: lead?.contact_full_name ?? undefined,
+            leadEmail: lead?.contact_email ?? undefined,
+            leadPhone: lead?.contact_phone ?? undefined,
             organizerName,
             organizerEmail,
         };
@@ -103,7 +137,7 @@ export async function getCalendarSlots(
     const { data, error } = await ctx.supabase
         .from("availability_slots")
         .select(
-            "id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked"
+            "id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked",
         )
         .eq("organization_id", ctx.profile.organization_id)
         .gte("starts_at", startDate.toISOString())
@@ -131,7 +165,9 @@ async function getUserContext() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    if (!user) return { error: "No autenticado", supabase: null, profile: null };
+    if (!user) {
+        return { error: "No autenticado", supabase: null, profile: null };
+    }
 
     const { data: profile } = await supabase
         .from("user_profiles")
@@ -140,7 +176,11 @@ async function getUserContext() {
         .single();
 
     if (!profile?.organization_id) {
-        return { error: "No se encontró tu organización", supabase: null, profile: null };
+        return {
+            error: "No se encontró tu organización",
+            supabase: null,
+            profile: null,
+        };
     }
 
     return { supabase, profile };
@@ -152,7 +192,9 @@ export async function getCalendarLeads(): Promise<CalendarLeadOption[]> {
 
     const { data, error } = await ctx.supabase
         .from("leads")
-        .select("id, student_name, contact_full_name, contact_email, contact_phone")
+        .select(
+            "id, student_name, contact_full_name, contact_email, contact_phone",
+        )
         .eq("organization_id", ctx.profile.organization_id)
         .order("created_at", { ascending: false });
 
@@ -177,7 +219,9 @@ export async function createCalendarEvent(eventData: {
     notes?: string;
 }): Promise<{ success: boolean; event?: CalendarEvent; error?: string }> {
     const ctx = await getUserContext();
-    if (!ctx.supabase || !ctx.profile) return { success: false, error: ctx.error };
+    if (!ctx.supabase || !ctx.profile) {
+        return { success: false, error: ctx.error };
+    }
 
     if (!eventData.leadId || !eventData.slotId) {
         return { success: false, error: "Faltan datos obligatorios." };
@@ -185,7 +229,9 @@ export async function createCalendarEvent(eventData: {
 
     const { data: slot, error: slotError } = await ctx.supabase
         .from("availability_slots")
-        .select("id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked")
+        .select(
+            "id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked",
+        )
         .eq("organization_id", ctx.profile.organization_id)
         .eq("id", eventData.slotId)
         .single();
@@ -195,15 +241,17 @@ export async function createCalendarEvent(eventData: {
         return { success: false, error: "Slot no disponible." };
     }
 
-    const slotUnavailable =
-        !slot.is_active ||
+    const slotUnavailable = !slot.is_active ||
         slot.is_blocked ||
         typeof slot.appointments_count !== "number" ||
         typeof slot.max_appointments !== "number" ||
         slot.appointments_count >= slot.max_appointments;
 
     if (slotUnavailable) {
-        return { success: false, error: "El slot seleccionado ya no está disponible." };
+        return {
+            success: false,
+            error: "El slot seleccionado ya no está disponible.",
+        };
     }
 
     const { data: inserted, error } = await ctx.supabase
@@ -246,8 +294,12 @@ export async function createCalendarEvent(eventData: {
     const dateStr = format(start, "yyyy-MM-dd");
     const startTimeStr = format(start, "HH:mm");
     const endTimeStr = format(end, "HH:mm");
-    const insertedLead = Array.isArray(inserted.lead) ? inserted.lead[0] : inserted.lead;
-    const insertedCreatedBy = Array.isArray(inserted.created_by) ? inserted.created_by[0] : inserted.created_by;
+    const insertedLead = Array.isArray(inserted.lead)
+        ? inserted.lead[0]
+        : inserted.lead;
+    const insertedCreatedBy = Array.isArray(inserted.created_by)
+        ? inserted.created_by[0]
+        : inserted.created_by;
     const leadName = insertedLead?.student_name || "Unknown Lead";
     const organizerName = insertedCreatedBy?.full_name || "Staff";
     const organizerEmail = insertedCreatedBy?.email || undefined;
@@ -300,7 +352,9 @@ export async function updateCalendarEvent(eventData: {
     notes?: string;
 }): Promise<{ success: boolean; event?: CalendarEvent; error?: string }> {
     const ctx = await getUserContext();
-    if (!ctx.supabase || !ctx.profile) return { success: false, error: ctx.error };
+    if (!ctx.supabase || !ctx.profile) {
+        return { success: false, error: ctx.error };
+    }
 
     if (!eventData.id || !eventData.slotId) {
         return { success: false, error: "Faltan datos obligatorios." };
@@ -320,7 +374,9 @@ export async function updateCalendarEvent(eventData: {
 
     const { data: slot, error: slotError } = await ctx.supabase
         .from("availability_slots")
-        .select("id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked")
+        .select(
+            "id, starts_at, ends_at, campus, max_appointments, appointments_count, is_active, is_blocked",
+        )
         .eq("organization_id", ctx.profile.organization_id)
         .eq("id", eventData.slotId)
         .single();
@@ -331,15 +387,17 @@ export async function updateCalendarEvent(eventData: {
     }
 
     const changingSlot = existing.slot_id !== slot.id;
-    const slotUnavailable =
-        !slot.is_active ||
+    const slotUnavailable = !slot.is_active ||
         slot.is_blocked ||
         typeof slot.appointments_count !== "number" ||
         typeof slot.max_appointments !== "number" ||
         (changingSlot && slot.appointments_count >= slot.max_appointments);
 
     if (slotUnavailable) {
-        return { success: false, error: "El slot seleccionado ya no está disponible." };
+        return {
+            success: false,
+            error: "El slot seleccionado ya no está disponible.",
+        };
     }
 
     const { data: updated, error } = await ctx.supabase
@@ -379,8 +437,12 @@ export async function updateCalendarEvent(eventData: {
     const dateStr = format(start, "yyyy-MM-dd");
     const startTimeStr = format(start, "HH:mm");
     const endTimeStr = format(end, "HH:mm");
-    const updatedLead = Array.isArray(updated.lead) ? updated.lead[0] : updated.lead;
-    const updatedCreatedBy = Array.isArray(updated.created_by) ? updated.created_by[0] : updated.created_by;
+    const updatedLead = Array.isArray(updated.lead)
+        ? updated.lead[0]
+        : updated.lead;
+    const updatedCreatedBy = Array.isArray(updated.created_by)
+        ? updated.created_by[0]
+        : updated.created_by;
     const leadName = updatedLead?.student_name || "Unknown Lead";
     const organizerName = updatedCreatedBy?.full_name || "Staff";
     const organizerEmail = updatedCreatedBy?.email || undefined;
@@ -394,7 +456,10 @@ export async function updateCalendarEvent(eventData: {
             .maybeSingle();
 
         if (oldSlot) {
-            const nextCount = Math.max((oldSlot.appointments_count || 0) - 1, 0);
+            const nextCount = Math.max(
+                (oldSlot.appointments_count || 0) - 1,
+                0,
+            );
             const { error: oldSlotError } = await ctx.supabase
                 .from("availability_slots")
                 .update({
@@ -453,9 +518,13 @@ export async function updateCalendarEvent(eventData: {
     };
 }
 
-export async function deleteCalendarEvent(eventId: string): Promise<{ success: boolean; error?: string }> {
+export async function deleteCalendarEvent(
+    eventId: string,
+): Promise<{ success: boolean; error?: string }> {
     const ctx = await getUserContext();
-    if (!ctx.supabase || !ctx.profile) return { success: false, error: ctx.error };
+    if (!ctx.supabase || !ctx.profile) {
+        return { success: false, error: ctx.error };
+    }
 
     if (!eventId) return { success: false, error: "ID inválido." };
 

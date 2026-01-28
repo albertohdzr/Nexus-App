@@ -6,7 +6,7 @@ import { Badge } from "@/src/components/ui/badge"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Button } from "@/src/components/ui/button"
-import { IconDotsVertical, IconEye } from "@tabler/icons-react"
+import { IconDotsVertical } from "@tabler/icons-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,19 +69,22 @@ export const columns: ColumnDef<AiLog>[] = [
     header: "Resumen",
     cell: ({ row }) => {
       const type = row.original.event_type
-      const payload = row.original.payload as any
+      const payload = row.original.payload as Record<string, unknown>
       
       let summary = ""
 
       if (type === "openai_request") {
-        summary = `Input: "${payload?.input?.substring(0, 50)}${payload?.input?.length > 50 ? "..." : ""}"`
+        const input = payload?.input as string | undefined
+        summary = input ? `Input: "${input.substring(0, 50)}${input.length > 50 ? "..." : ""}"` : ""
       } else if (type === "openai_response") {
         if (payload?.answer) {
-             summary = `AI: "${payload.answer.substring(0, 50)}..."`
+             const answer = payload.answer as string
+             summary = `AI: "${answer.substring(0, 50)}..."`
         } else if (payload?.output_text) {
-             summary = `AI: "${payload.output_text.substring(0, 50)}..."`
+             const outputText = payload.output_text as string
+             summary = `AI: "${outputText.substring(0, 50)}..."`
         } else if (payload?.function_calls) {
-             summary = `Calls: ${payload.function_calls.map((c: any) => c.name).join(", ")}`
+             summary = `Calls: ${(payload.function_calls as Array<{ name: string }>).map((c) => c.name).join(", ")}`
         }
       } else if (type === "tool_call") {
          summary = `Call: ${payload?.name} (${JSON.stringify(payload?.args || {}).substring(0, 30)}...)`

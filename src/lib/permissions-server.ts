@@ -13,7 +13,7 @@ type ProfileRole = {
 
 export async function getProfileWithRole(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
 ): Promise<{ profile: ProfileRole | null; error?: string }> {
   const { data: profile, error } = await supabase
     .from("user_profiles")
@@ -25,7 +25,17 @@ export async function getProfileWithRole(
     return { profile: null, error: "No se pudo cargar el perfil del usuario." };
   }
 
-  const role = Array.isArray((profile as any).role) ? (profile as any).role[0] : (profile as any).role;
+  type ProfileWithRole = typeof profile & {
+    role?: { id: string; slug: string; name: string } | {
+      id: string;
+      slug: string;
+      name: string;
+    }[] | null;
+  };
+  const profileWithRole = profile as ProfileWithRole;
+  const role = Array.isArray(profileWithRole.role)
+    ? profileWithRole.role[0]
+    : profileWithRole.role;
   return {
     profile: {
       id: profile.id,
@@ -40,7 +50,7 @@ export async function checkPermission(
   supabase: SupabaseClient,
   userId: string,
   module: string,
-  action = "access"
+  action = "access",
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc("check_permission", {
     user_id: userId,

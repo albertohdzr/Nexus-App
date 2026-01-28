@@ -23,8 +23,10 @@ export function ChatSidebarCollapser() {
   }, [open])
 
   useEffect(() => {
+    const wasInitiallyOpen = initialOpen.current
+    const didUserExpand = userExpanded.current
     return () => {
-      if (initialOpen.current && !userExpanded.current) {
+      if (wasInitiallyOpen && !didUserExpand) {
         setOpen(true)
       }
     }

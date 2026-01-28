@@ -18,7 +18,7 @@ export default function TermsOfServicePage() {
                 <section>
                     <h2 className="text-xl font-semibold mb-3 text-foreground">1. Aceptación de los Términos</h2>
                     <p>
-                        Al acceder o utilizar la plataforma Nexus ("el Servicio"), usted acepta estar legalmente vinculado por estas Condiciones del Servicio ("Términos").
+                        Al acceder o utilizar la plataforma Nexus (&quot;el Servicio&quot;), usted acepta estar legalmente vinculado por estas Condiciones del Servicio (&quot;Términos&quot;).
                         Si no está de acuerdo con alguna parte de estos términos, no podrá acceder al Servicio.
                     </p>
                 </section>
@@ -27,7 +27,7 @@ export default function TermsOfServicePage() {
                     <h2 className="text-xl font-semibold mb-3 text-foreground">2. Descripción del Servicio</h2>
                     <p>
                         Nexus es una plataforma de gestión escolar y CRM que ofrece herramientas para la administración de estudiantes, seguimiento de ventas y comunicación.
-                        El Servicio puede incluir, entre otras cosas, funcionalidades de chat automatizado ("Chatbot") para facilitar la interacción con clientes y estudiantes.
+                        El Servicio puede incluir, entre otras cosas, funcionalidades de chat automatizado (&quot;Chatbot&quot;) para facilitar la interacción con clientes y estudiantes.
                     </p>
                 </section>
 

@@ -74,7 +74,7 @@ export function StatusHistoryTimeline({
         </div>
 
         {/* Historial */}
-        {history.map((entry, index) => (
+        {history.map((entry) => (
           <div
             key={entry.id}
             className="relative pl-6 pb-6 border-l-2 border-muted last:border-l-transparent"

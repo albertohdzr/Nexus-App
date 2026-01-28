@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
                 <section>
                     <h2 className="text-xl font-semibold mb-3 text-foreground">1. Introducción</h2>
                     <p>
-                        Bienvenido a CAT - Nexus ("nosotros", "nuestro" o "la Plataforma"). Nos comprometemos a proteger su privacidad
+                        Bienvenido a CAT - Nexus (&quot;nosotros&quot;, &quot;nuestro&quot; o &quot;la Plataforma&quot;). Nos comprometemos a proteger su privacidad
                         y asegurar que sus datos personales sean tratados con seguridad y transparencia. Esta Política de Privacidad
                         explica cómo recopilamos, usamos, divulgamos y protegemos su información cuando utiliza nuestra aplicación.
                     </p>
@@ -80,7 +80,7 @@ export default function PrivacyPolicyPage() {
                     <ul className="list-disc pl-5 mt-2 space-y-1">
                         <li>Derecho a acceder a sus datos.</li>
                         <li>Derecho a rectificar datos inexactos.</li>
-                        <li>Derecho a solicitar la eliminación de sus datos ("derecho al olvido").</li>
+                        <li>Derecho a solicitar la eliminación de sus datos (&quot;derecho al olvido&quot;).</li>
                         <li>Derecho a restringir o portar sus datos.</li>
                     </ul>
                     <p className="mt-2">
@@ -92,7 +92,7 @@ export default function PrivacyPolicyPage() {
                     <h2 className="text-xl font-semibold mb-3 text-foreground">7. Cambios a esta Política</h2>
                     <p>
                         Podemos actualizar nuestra Política de Privacidad periódicamente. Le notificaremos cualquier cambio publicando la nueva política en esta página
-                        y actualizando la fecha de "Última actualización".
+                        y actualizando la fecha de &quot;Última actualización&quot;.
                     </p>
                 </section>
 

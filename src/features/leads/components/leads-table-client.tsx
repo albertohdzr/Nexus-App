@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react"
-import { Search, ArrowUpDown, ArrowUp, ArrowDown, Mail, Activity, Target } from "lucide-react"
+import { Search, Mail, Activity, Target } from "lucide-react"
 import { Checkbox } from "@/src/components/ui/checkbox"
 import {
   Table,

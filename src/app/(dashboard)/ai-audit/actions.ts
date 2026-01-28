@@ -9,7 +9,7 @@ export type AiLog = {
     chat_id: string;
     conversation_id: string | null;
     event_type: string;
-    payload: Record<string, any>;
+    payload: Record<string, unknown>;
     idx?: number;
 };
 

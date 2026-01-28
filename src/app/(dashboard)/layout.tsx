@@ -45,10 +45,6 @@ export default async function DashboardLayout({
     const roleSlug = roleRecord?.slug || null
     const roleName = roleRecord?.name || null
     // @ts-expect-error Supabase join typing for organization is not generated
-    const orgName = profile?.organization?.name || "Nexus"
-    // @ts-expect-error Supabase join typing for organization is not generated
-    const orgLogo = profile?.organization?.logo_url || null
-    // @ts-expect-error Supabase join typing for organization is not generated
     const orgSlug = profile?.organization?.slug || "NEXUS"
 
 

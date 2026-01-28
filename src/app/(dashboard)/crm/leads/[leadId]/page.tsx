@@ -9,7 +9,6 @@
  */
 
 import { notFound, redirect } from "next/navigation"
-import { Suspense } from "react"
 import {
   LeadDetailHeader,
   LeadProfileCard,
@@ -25,7 +24,6 @@ import {
   getCurrentUserOrganizationId,
   updateLeadStatus,
   addNote,
-  getSessions,
   getLeadSummary,
 } from "@features/leads"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
@@ -60,7 +58,7 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
   // Derived data
   const cycleName = cycles.find((c) => c.id === lead.cycle_id)?.name || "Sin ciclo"
   const sessions = lead.chat?.chat_sessions || []
-  const summary = getLeadSummary(lead as any)
+  const summary = getLeadSummary(lead)
   const latestActivity =
     sessions[0]?.last_response_at || sessions[0]?.updated_at || lead.updated_at
 
@@ -190,19 +188,16 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
                 <StatCard
                   label="Sesiones de Chat"
                   value={sessions.length}
-                  icon="chat"
                 />
                 <StatCard
                   label="Emails Enviados"
                   value={lead.emails?.length || 0}
-                  icon="mail"
                 />
                 <StatCard
                   label="Notas Internas"
                   value={lead.notes?.length || 0}
-                  icon="note"
                 />
-                <StatCard label="Citas" value={appointments.length} icon="calendar" />
+                <StatCard label="Citas" value={appointments.length} />
               </div>
             </TabsContent>
 
@@ -256,11 +251,9 @@ function formatRelativeDate(value: string | null | undefined): string {
 function StatCard({
   label,
   value,
-  icon,
 }: {
   label: string
   value: number
-  icon: "chat" | "mail" | "note" | "calendar"
 }) {
   return (
     <div className="rounded-xl border bg-card p-4 space-y-2">

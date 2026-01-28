@@ -25,14 +25,15 @@ const getStatusColor = (status: string) => {
   }
 }
 
-const statusIcons: Record<string, any> = {
+const statusIcons: Record<string, typeof Circle> = {
   scheduled: Circle,
   completed: CheckCircle2,
   cancelled: XCircle,
 }
 
-const getStatusIcon = (status: string) => {
-  return statusIcons[status] || AlertCircle
+const StatusIconRenderer = ({ status, className }: { status: string; className?: string }) => {
+  const Icon = statusIcons[status] || AlertCircle
+  return <Icon className={className} />
 }
 
 interface AppointmentDetailsDialogProps {
@@ -48,7 +49,6 @@ export function AppointmentDetailsDialog({
 }: AppointmentDetailsDialogProps) {
   if (!appointment) return null
 
-  const StatusIcon = getStatusIcon(appointment.status)
   const date = new Date(appointment.starts_at)
 
   return (
@@ -69,7 +69,7 @@ export function AppointmentDetailsDialog({
               variant="outline" 
               className={cn("capitalize px-2.5 py-0.5 text-xs font-semibold border", getStatusColor(appointment.status))}
             >
-              <StatusIcon className="w-3 h-3 mr-1.5" />
+              <StatusIconRenderer status={appointment.status} className="w-3 h-3 mr-1.5" />
               {appointment.status === 'scheduled' ? 'Programada' : 
                appointment.status === 'completed' ? 'Completada' : 
                appointment.status === 'cancelled' ? 'Cancelada' : appointment.status}

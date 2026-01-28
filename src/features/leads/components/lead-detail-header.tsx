@@ -8,7 +8,7 @@ import { ArrowLeft, Edit, MessageSquare } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Badge } from "@/src/components/ui/badge"
 import { SourceBadge } from "./source-badge"
-import type { LeadDetail, AdmissionCycle } from "../types"
+import type { LeadDetail } from "../types"
 
 interface LeadDetailHeaderProps {
   lead: LeadDetail

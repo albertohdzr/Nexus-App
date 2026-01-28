@@ -17,8 +17,6 @@ import {
     IconChevronDown,
     IconChevronLeft,
     IconChevronRight,
-    IconChevronsLeft,
-    IconChevronsRight,
     IconDotsVertical,
     IconLayoutColumns,
     IconPlus,
@@ -42,13 +40,6 @@ import {
     TableHeader,
     TableRow,
 } from "@/src/components/ui/table"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/src/components/ui/select"
 import Link from "next/link"
 import { Badge } from "@/src/components/ui/badge"
 import { OrganizationTableRow } from "@/src/types/organization"

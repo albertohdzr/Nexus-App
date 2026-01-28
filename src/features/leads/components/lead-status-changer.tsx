@@ -5,7 +5,7 @@
  * Permite cambiar el estado del lead con feedback visual
  */
 
-import { useActionState, useState, useEffect } from "react"
+import { startTransition, useActionState, useState } from "react"
 import { toast } from "sonner"
 import { ChevronDown, Loader2 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
@@ -37,20 +37,28 @@ export function LeadStatusChanger({
   updateStatusAction,
 }: LeadStatusChangerProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [state, formAction, pending] = useActionState<
-    UpdateLeadActionState,
-    FormData
-  >(updateStatusAction, {})
 
-  useEffect(() => {
-    if (state.success) {
-      toast.success(state.success)
-      setIsOpen(false)
+  // Wrap the action to handle success/error with callbacks
+  const wrappedAction = async (
+    prevState: UpdateLeadActionState,
+    formData: FormData
+  ): Promise<UpdateLeadActionState> => {
+    const result = await updateStatusAction(prevState, formData)
+    // Handle result in callback to avoid setState in effect
+    if (result.success) {
+      toast.success(result.success)
+      startTransition(() => setIsOpen(false))
     }
-    if (state.error) {
-      toast.error(state.error)
+    if (result.error) {
+      toast.error(result.error)
     }
-  }, [state])
+    return result
+  }
+
+  const [, formAction, pending] = useActionState<UpdateLeadActionState, FormData>(
+    wrappedAction,
+    {}
+  )
 
   const handleStatusChange = (newStatus: string) => {
     if (newStatus === currentStatus) return

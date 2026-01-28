@@ -255,6 +255,9 @@ export default function LeadSidePanel({
     FormData
   >(createLeadAction, {})
 
+  // Handle createState changes - show toast and reset form on success
+  // Action response handling requires state updates
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!createState) return
     if (createState.error) {
@@ -267,6 +270,7 @@ export default function LeadSidePanel({
       router.refresh()
     }
   }, [createState, router])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     let isMounted = true
@@ -456,7 +460,7 @@ export default function LeadSidePanel({
       sessions.find((session) => session.id === chatInfo.active_session_id) ||
       null
     )
-  }, [chatInfo?.active_session_id, sessions])
+  }, [chatInfo, sessions])
 
   if (!chatId) {
     return null

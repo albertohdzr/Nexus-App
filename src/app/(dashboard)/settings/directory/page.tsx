@@ -97,7 +97,7 @@ export default function DirectorySettingsPage() {
 
   const handleSaveContact = async (formData: FormData) => {
     startContactTransition(async () => {
-      const res = await saveDirectoryContact({} as any, formData);
+      const res = await saveDirectoryContact({} as { error?: string; success?: string }, formData);
       if (res.error) {
         toast.error(res.error);
       } else {

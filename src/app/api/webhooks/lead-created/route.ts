@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildEmailHtml, renderTemplate, sendResendEmail, toPlainText } from "@/src/lib/email";
+import {
+  buildEmailHtml,
+  renderTemplate,
+  sendResendEmail,
+  toPlainText,
+} from "@/src/lib/email";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -126,7 +131,8 @@ export async function POST(request: Request) {
     }
 
     for (const template of matchedTemplates.values()) {
-      const subject = renderTemplate(template.subject, tokenMap) || "Nuevo registro";
+      const subject = renderTemplate(template.subject, tokenMap) ||
+        "Nuevo registro";
       const html = buildEmailHtml({
         bodyHtml: template.body_html,
         base: baseData ?? null,
@@ -177,7 +183,7 @@ function matchesSource(triggerSource: string, leadSource: string | null) {
   return triggerSource === (leadSource || "");
 }
 
-function matchesRules(rules: TriggerRule[], lead: Record<string, any>) {
+function matchesRules(rules: TriggerRule[], lead: Record<string, unknown>) {
   if (!rules.length) return true;
 
   return rules.every((rule) => {
@@ -222,20 +228,27 @@ function normalizeRules(
   return [];
 }
 
-function buildTokenMap(lead: Record<string, any>) {
-  const contactName = lead.contact_full_name ||
-    [
-      lead.contact_first_name,
-      lead.contact_last_name_paternal,
-      lead.contact_last_name_maternal,
-    ]
+function buildTokenMap(lead: Record<string, unknown>) {
+  const firstName = lead.contact_first_name
+    ? String(lead.contact_first_name)
+    : "";
+  const lastNamePaternal = lead.contact_last_name_paternal
+    ? String(lead.contact_last_name_paternal)
+    : "";
+  const lastNameMaternal = lead.contact_last_name_maternal
+    ? String(lead.contact_last_name_maternal)
+    : "";
+  const fullName = lead.contact_full_name ? String(lead.contact_full_name) : "";
+
+  const contactName = fullName ||
+    [firstName, lastNamePaternal, lastNameMaternal]
       .filter(Boolean)
       .join(" ");
 
   return {
     contact_full_name: contactName || "",
-    student_name: lead.student_name || "",
-    lead_id: lead.id || "",
+    student_name: lead.student_name ? String(lead.student_name) : "",
+    lead_id: lead.id ? String(lead.id) : "",
     visit_date: "",
     visit_time: "",
     campus_name: "",

@@ -7,12 +7,7 @@ import { Button } from "@/src/components/ui/button"
 import { SidebarTrigger } from "@/src/components/ui/sidebar"
 import { Separator } from "@/src/components/ui/separator"
 
-interface TopNavProps {
-    organizationName: string
-    organizationLogo?: string | null
-}
-
-export function TopNav({ organizationName, organizationLogo }: TopNavProps) {
+export function TopNav() {
     const pathname = usePathname()
 
     // Get the current page title based on the path

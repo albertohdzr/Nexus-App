@@ -6,15 +6,12 @@ import {
   Bell,
   Calendar as CalendarIcon,
   Plus,
-  Github,
   CheckCircle2,
   Clock,
-  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { useCalendarStore } from "@/src/store/calendar-store";
-import Link from "next/link";
-import { ThemeToggle } from "@/src/components/theme-toggle";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +22,7 @@ import {
 } from "@/src/components/ui/dropdown-menu";
 import { CreateEventDialog } from "./create-event-dialog";
 import { SchedulePopover } from "./schedule-popover";
-import { SidebarTrigger } from "@/src/components/ui/sidebar";
+
 
 export function CalendarHeader() {
   const { currentWeekStart, events } = useCalendarStore();

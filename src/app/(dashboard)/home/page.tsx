@@ -1,6 +1,6 @@
 "use client"
 
-import { DashboardHeader } from "@/src/components/dashboard/header"
+
 import { StatsCards } from "@/src/components/dashboard/stats-cards"
 import { LeadsChart } from "@/src/components/dashboard/leads-chart"
 import { TopPerformers } from "@/src/components/dashboard/top-performers"

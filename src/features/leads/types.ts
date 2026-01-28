@@ -214,6 +214,6 @@ export interface CreateLeadActionState extends LeadActionState {
     leadId?: string;
 }
 
-export interface FollowUpActionState extends LeadActionState {}
-export interface NoteActionState extends LeadActionState {}
-export interface UpdateLeadActionState extends LeadActionState {}
+export type FollowUpActionState = LeadActionState;
+export type NoteActionState = LeadActionState;
+export type UpdateLeadActionState = LeadActionState;

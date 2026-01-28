@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/src/lib/supabase/client";
@@ -43,7 +43,7 @@ type BotCapability = {
   type?: string | null;
   enabled?: boolean | null;
   priority?: number | null;
-  metadata?: Record<string, any> | null;
+  metadata?: Record<string, unknown> | null;
   finance: CapabilityFinance[];
 };
 
@@ -61,6 +61,34 @@ export default function BotSettingsPage() {
   const [capPending, startCapTransition] = useTransition();
   const [financePending, startFinanceTransition] = useTransition();
   const supabase = createClient();
+
+  const fetchCapabilities = useCallback(async (orgId: string) => {
+    const [{ data: caps }, { data: finance }] = await Promise.all([
+      supabase
+        .from("bot_capabilities")
+        .select("*")
+        .eq("organization_id", orgId)
+        .order("priority", { ascending: false }),
+      supabase
+        .from("bot_capability_finance")
+        .select("*")
+        .eq("organization_id", orgId)
+        .order("priority", { ascending: false }),
+    ]);
+
+    const capMap = new Map<string, BotCapability>();
+    (caps || []).forEach((cap) =>
+      capMap.set(cap.id, { ...cap, finance: [] } as BotCapability)
+    );
+    (finance || []).forEach((item) => {
+      const cap = capMap.get(item.capability_id);
+      if (cap) {
+        cap.finance.push(item as CapabilityFinance);
+      }
+    });
+
+    setCapabilities(Array.from(capMap.values()));
+  }, [supabase]);
 
   useEffect(() => {
     const fetchOrg = async () => {
@@ -89,40 +117,12 @@ export default function BotSettingsPage() {
     };
 
     fetchOrg();
-  }, [supabase]);
-
-  const fetchCapabilities = async (orgId: string) => {
-    const [{ data: caps }, { data: finance }] = await Promise.all([
-      supabase
-        .from("bot_capabilities")
-        .select("*")
-        .eq("organization_id", orgId)
-        .order("priority", { ascending: false }),
-      supabase
-        .from("bot_capability_finance")
-        .select("*")
-        .eq("organization_id", orgId)
-        .order("priority", { ascending: false }),
-    ]);
-
-    const capMap = new Map<string, BotCapability>();
-    (caps || []).forEach((cap) =>
-      capMap.set(cap.id, { ...cap, finance: [] } as BotCapability)
-    );
-    (finance || []).forEach((item) => {
-      const cap = capMap.get(item.capability_id);
-      if (cap) {
-        cap.finance.push(item as CapabilityFinance);
-      }
-    });
-
-    setCapabilities(Array.from(capMap.values()));
-  };
+  }, [supabase, fetchCapabilities]);
 
   const handleCapabilitySubmit = async (formData: FormData) => {
     if (!org) return;
     startCapTransition(async () => {
-      const res = await saveCapability({} as any, formData);
+      const res = await saveCapability({} as { error?: string; success?: string }, formData);
       if (res.error) {
         toast.error(res.error);
       } else {
@@ -135,7 +135,7 @@ export default function BotSettingsPage() {
   const handleFinanceSubmit = async (formData: FormData) => {
     if (!org) return;
     startFinanceTransition(async () => {
-      const res = await saveCapabilityFinance({} as any, formData);
+      const res = await saveCapabilityFinance({} as { error?: string; success?: string }, formData);
       if (res.error) {
         toast.error(res.error);
       } else {

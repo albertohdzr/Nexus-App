@@ -7,7 +7,7 @@ import { Appointment } from "./types"
 import { AppointmentDetailsDialog } from "./appointment-details-dialog"
 import { AppointmentHistoryDialog } from "./appointment-history-dialog"
 
-import { cn } from "@/src/lib/utils"
+
 
 interface AppointmentsSectionProps {
   appointments: Appointment[]
@@ -28,7 +28,7 @@ export function AppointmentsSection({ appointments }: AppointmentsSectionProps) 
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
 
-  const now = Date.now()
+  const [now] = useState(() => Date.now())
   const nextAppointment =
     appointments.find((appointment) => {
       const start = new Date(appointment.starts_at).getTime()

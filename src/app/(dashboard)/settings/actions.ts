@@ -2,7 +2,10 @@
 
 import { createClient } from "@/src/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { checkPermission, getProfileWithRole } from "@/src/lib/permissions-server";
+import {
+  checkPermission,
+  getProfileWithRole,
+} from "@/src/lib/permissions-server";
 
 async function getSettingsContext(action: string) {
   const supabase = await createClient();
@@ -14,7 +17,11 @@ async function getSettingsContext(action: string) {
 
   const { profile, error } = await getProfileWithRole(supabase, user.id);
   if (error || !profile?.organization_id) {
-    return { error: "No se encontró tu organización", supabase: null, profile: null };
+    return {
+      error: "No se encontró tu organización",
+      supabase: null,
+      profile: null,
+    };
   }
 
   const allowed = await checkPermission(supabase, user.id, "settings", action);
@@ -32,14 +39,6 @@ export async function updateOrganization(formData: FormData) {
   }
 
   const id = formData.get("id") as string;
-  const name = formData.get("name") as string;
-  const display_phone_number = formData.get("display_phone_number") as string;
-  const phone_number_id = formData.get("phone_number_id") as string;
-  const bot_name = (formData.get("bot_name") as string) || null;
-  const bot_instructions = (formData.get("bot_instructions") as string) || null;
-  const bot_tone = (formData.get("bot_tone") as string) || null;
-  const bot_language = (formData.get("bot_language") as string) || null;
-  const bot_model = (formData.get("bot_model") as string) || null;
 
   if (!id) {
     return { error: "Organization ID is required" };
@@ -50,23 +49,43 @@ export async function updateOrganization(formData: FormData) {
   }
 
   // Build update object dynamically to allow partial updates
-  const updateData: Record<string, any> = {
+  const updateData: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
 
   if (formData.has("name")) updateData.name = formData.get("name") as string;
-  if (formData.has("display_phone_number")) updateData.display_phone_number = formData.get("display_phone_number") as string;
-  if (formData.has("phone_number_id")) updateData.phone_number_id = formData.get("phone_number_id") as string;
-  if (formData.has("whatsapp_business_account_id")) {
-    updateData.whatsapp_business_account_id = formData.get("whatsapp_business_account_id") as string;
+  if (formData.has("display_phone_number")) {
+    updateData.display_phone_number = formData.get(
+      "display_phone_number",
+    ) as string;
   }
-  if (formData.has("bot_name")) updateData.bot_name = (formData.get("bot_name") as string) || null;
-  if (formData.has("bot_instructions")) updateData.bot_instructions = (formData.get("bot_instructions") as string) || null;
-  if (formData.has("bot_tone")) updateData.bot_tone = (formData.get("bot_tone") as string) || null;
-  if (formData.has("bot_language")) updateData.bot_language = (formData.get("bot_language") as string) || null;
-  if (formData.has("bot_model")) updateData.bot_model = (formData.get("bot_model") as string) || null;
+  if (formData.has("phone_number_id")) {
+    updateData.phone_number_id = formData.get("phone_number_id") as string;
+  }
+  if (formData.has("whatsapp_business_account_id")) {
+    updateData.whatsapp_business_account_id = formData.get(
+      "whatsapp_business_account_id",
+    ) as string;
+  }
+  if (formData.has("bot_name")) {
+    updateData.bot_name = (formData.get("bot_name") as string) || null;
+  }
+  if (formData.has("bot_instructions")) {
+    updateData.bot_instructions =
+      (formData.get("bot_instructions") as string) || null;
+  }
+  if (formData.has("bot_tone")) {
+    updateData.bot_tone = (formData.get("bot_tone") as string) || null;
+  }
+  if (formData.has("bot_language")) {
+    updateData.bot_language = (formData.get("bot_language") as string) || null;
+  }
+  if (formData.has("bot_model")) {
+    updateData.bot_model = (formData.get("bot_model") as string) || null;
+  }
   if (formData.has("bot_directory_enabled")) {
-    updateData.bot_directory_enabled = (formData.get("bot_directory_enabled") as string | null) === "on";
+    updateData.bot_directory_enabled =
+      (formData.get("bot_directory_enabled") as string | null) === "on";
   }
 
   const { data, error } = await ctx.supabase

@@ -26,7 +26,7 @@ export default function DataDeletionPage() {
                             Envíe un correo electrónico a nuestro equipo de soporte a: <strong>alberto.hernandez@cat.com</strong>
                         </li>
                         <li>
-                            Utilice el asunto: <strong>"Solicitud de Eliminación de Datos"</strong>.
+                            Utilice el asunto: <strong>&quot;Solicitud de Eliminación de Datos&quot;</strong>.
                         </li>
                         <li>
                             En el cuerpo del mensaje, por favor indique claramente su deseo de eliminar su cuenta e incluya la dirección de correo electrónico

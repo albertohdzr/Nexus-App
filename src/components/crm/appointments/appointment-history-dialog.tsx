@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from 'react'
+
 import {
   Dialog,
   DialogContent,
@@ -27,7 +29,7 @@ export function AppointmentHistoryDialog({
   onOpenChange,
   onSelectAppointment,
 }: AppointmentHistoryDialogProps) {
-  const now = Date.now()
+  const [now] = useState(() => Date.now())
   const sorted = [...appointments].sort((a, b) => 
     new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime()
   )

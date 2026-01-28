@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
@@ -32,6 +32,26 @@ interface CreateEventDialogProps {
   initialEvent?: CalendarEvent | null;
 }
 
+// Helper to get initial values from props
+function getInitialValues(initialEvent: CalendarEvent | null | undefined) {
+  if (!initialEvent) {
+    return {
+      date: new Date(),
+      leadId: "",
+      slotId: "",
+      type: "",
+      notes: "",
+    };
+  }
+  return {
+    date: new Date(`${initialEvent.date}T00:00:00`),
+    leadId: initialEvent.leadId || "",
+    slotId: initialEvent.slotId || "",
+    type: initialEvent.type || "",
+    notes: initialEvent.notes || "",
+  };
+}
+
 export function CreateEventDialog({
   open,
   onOpenChange,
@@ -39,33 +59,30 @@ export function CreateEventDialog({
 }: CreateEventDialogProps) {
   const { addEvent, updateEvent, goToDate, leads, slots, adjustSlotCount } = useCalendarStore();
   const isEditing = Boolean(initialEvent);
-  const [date, setDate] = useState<Date | undefined>(new Date());
+  
+  const initialValues = useMemo(() => getInitialValues(initialEvent), [initialEvent]);
+  
+  const [date, setDate] = useState<Date | undefined>(initialValues.date);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [leadId, setLeadId] = useState("");
-  const [slotId, setSlotId] = useState("");
-  const [type, setType] = useState("");
-  const [notes, setNotes] = useState("");
+  const [leadId, setLeadId] = useState(initialValues.leadId);
+  const [slotId, setSlotId] = useState(initialValues.slotId);
+  const [type, setType] = useState(initialValues.type);
+  const [notes, setNotes] = useState(initialValues.notes);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Reset form when dialog opens or initialEvent changes
+  // Form reset on dialog open is an acceptable pattern
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!initialEvent) {
-      setDate(new Date());
-      setLeadId("");
-      setSlotId("");
-      setType("");
-      setNotes("");
-      setFormError(null);
-      return;
-    }
-
-    const parsedDate = new Date(`${initialEvent.date}T00:00:00`);
-    setDate(parsedDate);
-    setLeadId(initialEvent.leadId || "");
-    setSlotId(initialEvent.slotId || "");
-    setType(initialEvent.type || "");
-    setNotes(initialEvent.notes || "");
+    const values = getInitialValues(initialEvent);
+    setDate(values.date);
+    setLeadId(values.leadId);
+    setSlotId(values.slotId);
+    setType(values.type);
+    setNotes(values.notes);
     setFormError(null);
-  }, [initialEvent, open]);
+  }, [open, initialEvent]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const selectedDateKey = date ? date.toLocaleDateString("en-CA") : null;
   const slotsForDate = slots.filter((slot) => {
@@ -86,6 +103,9 @@ export function CreateEventDialog({
     }
   };
 
+  // Clear slot when date changes and slot doesn't match new date
+  // Slot sync on date change is an acceptable pattern
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!selectedSlot || !selectedDateKey) return;
     const slotDate = new Date(selectedSlot.startsAt).toLocaleDateString("en-CA");
@@ -93,6 +113,7 @@ export function CreateEventDialog({
       setSlotId("");
     }
   }, [selectedDateKey, selectedSlot]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

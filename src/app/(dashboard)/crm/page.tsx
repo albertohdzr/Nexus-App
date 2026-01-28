@@ -1,9 +1,8 @@
 "use client"
 
-import { DashboardHeader } from "@/src/components/dashboard/header"
-import { navigationModules } from "@/src/config/navigation"
+
 import Link from "next/link"
-import { ArrowUpRight, Calendar, Users, FileText, Settings, MessageCircle } from "lucide-react"
+import { Calendar, Users, FileText, MessageCircle } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/src/components/ui/card"
 import { StatsCards } from "@/src/components/dashboard/stats-cards"

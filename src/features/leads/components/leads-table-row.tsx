@@ -9,11 +9,8 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   Eye,
-  ExternalLink,
   MoreHorizontal,
-  Mail,
-  Activity,
-  Target,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Checkbox } from "@/src/components/ui/checkbox"
