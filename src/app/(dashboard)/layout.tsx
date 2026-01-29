@@ -1,5 +1,6 @@
 import { createClient } from "@/src/lib/supabase/server"
 import { AuthProvider } from "@/src/components/providers/auth-provider"
+import { HeaderActionsProvider } from "@/src/components/providers/header-actions-provider"
 import { redirect } from "next/navigation"
 import { Sidebar } from "@/src/components/layout/sidebar"
 import { DashboardHeader } from "@/src/components/dashboard/header"
@@ -66,20 +67,22 @@ export default async function DashboardLayout({
                 return acc
             }, {} as Record<string, Record<string, boolean>>)}
         >
-            <SidebarProvider className="bg-sidebar">
-                <Sidebar organizationSlug={orgSlug} />
-                <SidebarInset className="bg-background">
-                     {/* We use a container similar to the template's page.tsx but adaptable for nested layouts */}
-                    <div className="h-svh overflow-hidden lg:p-2 w-full flex flex-col">
-                        <div className="flex-1 lg:rounded-md overflow-hidden flex flex-col bg-card relative shadow-sm">
-                            <DashboardHeader />
-                            <MainContent>
-                                {children}
-                            </MainContent>
+            <HeaderActionsProvider>
+                <SidebarProvider className="bg-sidebar">
+                    <Sidebar organizationSlug={orgSlug} />
+                    <SidebarInset className="bg-background">
+                         {/* We use a container similar to the template's page.tsx but adaptable for nested layouts */}
+                        <div className="h-svh overflow-hidden lg:p-2 w-full flex flex-col">
+                            <div className="flex-1 lg:rounded-md overflow-hidden flex flex-col bg-card relative shadow-sm">
+                                <DashboardHeader />
+                                <MainContent>
+                                    {children}
+                                </MainContent>
+                            </div>
                         </div>
-                    </div>
-                </SidebarInset>
-            </SidebarProvider>
+                    </SidebarInset>
+                </SidebarProvider>
+            </HeaderActionsProvider>
         </AuthProvider>
     )
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Button } from "@/src/components/ui/button";
 import { SidebarTrigger } from "@/src/components/ui/sidebar";
 import { ThemeToggle } from "@/src/components/theme-toggle";
@@ -14,19 +15,25 @@ import {
 import {
   Sparkles,
   Plus,
-  FilePlus,
-  UserPlus,
   Mail,
   Link2,
   Users,
+  ArrowLeft,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useHeaderActionsConfig, type HeaderAction } from "@/src/components/providers/header-actions-provider";
 
 export function DashboardHeader() {
   const pathname = usePathname();
+  const headerConfig = useHeaderActionsConfig();
 
   // Helper to determine title from path
   const getPageTitle = (path: string) => {
+    // Si hay un título personalizado en la configuración, usarlo
+    if (headerConfig?.title) {
+      return headerConfig.title;
+    }
+
     if (path === '/' || path === '/home') return 'Dashboard';
 
     const segments = path.split('/').filter(Boolean);
@@ -49,7 +56,10 @@ export function DashboardHeader() {
         finance: 'Finance',
         settings: 'Settings',
         bot: 'Bot',
-        directory: 'Directory'
+        directory: 'Directory',
+        leads: 'Leads',
+        calendar: 'Calendar',
+        appointments: 'Appointments',
     };
 
     if (specialTitles[titleSegment.toLowerCase()]) {
@@ -66,17 +76,84 @@ export function DashboardHeader() {
 
   const title = getPageTitle(pathname);
 
+  // Renderizar una acción individual
+  const renderAction = (action: HeaderAction) => {
+    // Si tiene un component personalizado, renderizarlo directamente
+    if (action.component) {
+      return <div key={action.id}>{action.component}</div>;
+    }
+
+    const Icon = action.icon;
+    const variant = action.variant || "outline";
+
+    // Si tiene href, es un Link
+    if (action.href) {
+      return (
+        <Button key={action.id} variant={variant} size="sm" asChild className="gap-2 h-7">
+          <Link href={action.href}>
+            {Icon && <Icon className="size-3.5" />}
+            {action.label && <span className="hidden sm:inline">{action.label}</span>}
+          </Link>
+        </Button>
+      );
+    }
+
+    // Si tiene onClick, es un Button
+    if (action.onClick) {
+      return (
+        <Button 
+          key={action.id} 
+          variant={variant} 
+          size="sm" 
+          onClick={action.onClick}
+          className="gap-2 h-7"
+        >
+          {Icon && <Icon className="size-3.5" />}
+          {action.label && <span className="hidden sm:inline">{action.label}</span>}
+        </Button>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <header className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3 border-b bg-card sticky top-0 z-10 w-full">
       <div className="flex items-center gap-3">
         <SidebarTrigger className="-ml-2" />
+        
+        {/* Back button (si está configurado) */}
+        {headerConfig?.backButton && (
+          <>
+            <div className="h-5 w-px bg-border" />
+            <Button variant="ghost" size="sm" asChild className="gap-1.5 h-7 -ml-1">
+              <Link href={headerConfig.backButton.href}>
+                <ArrowLeft className="size-3.5" />
+                <span className="hidden sm:inline text-sm">
+                  {headerConfig.backButton.label || "Volver"}
+                </span>
+              </Link>
+            </Button>
+          </>
+        )}
+
         <div className="hidden sm:flex items-center gap-2 text-muted-foreground">
-          {/* <BarChart3 className="size-4" /> */}
           <span className="text-sm font-medium">{title}</span>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Page Actions (acciones contextuales de la página) */}
+        {headerConfig?.actions && headerConfig.actions.length > 0 && (
+          <>
+            <div className="flex items-center gap-1.5">
+              {headerConfig.actions.map(renderAction)}
+            </div>
+            <div className="h-5 w-px bg-border mx-1" />
+          </>
+        )}
+
+        {/* Global Actions */}
         <div className="hidden lg:flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -184,11 +261,11 @@ export function WelcomeSection() {
           variant="outline"
           className="h-9 gap-1.5 bg-card hover:bg-card/80 border-border/50"
         >
-          <FilePlus className="size-4" />
+          <Plus className="size-4" />
           <span className="hidden sm:inline">Add Project</span>
         </Button>
         <Button className="h-9 gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-white border border-border/50">
-          <UserPlus className="size-4" />
+          <Users className="size-4" />
           <span className="hidden sm:inline">New Client</span>
         </Button>
       </div>

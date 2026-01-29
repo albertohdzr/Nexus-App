@@ -27,3 +27,6 @@ export { LeadStatusChanger } from "./lead-status-changer";
 export { LeadNotesCard } from "./lead-notes-card";
 export { EditLeadSheet } from "./edit-lead-sheet";
 export { EditLeadButton } from "./edit-lead-button";
+export { LeadPageHeaderActions } from "./lead-page-header-actions";
+export { LeadAppointmentsCard } from "./lead-appointments-card";
+export { CreateAppointmentDialog } from "./create-appointment-dialog";

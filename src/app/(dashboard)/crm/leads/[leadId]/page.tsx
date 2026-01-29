@@ -4,7 +4,7 @@
  * Página de detalle del lead con arquitectura server-first:
  * - Data fetching en el servidor
  * - Componentes modulares por sección
- * - Historial de estados para trazabilidad
+ * - Header actions inyectados al header global
  * - UI profesional de CRM
  */
 
@@ -17,7 +17,7 @@ import {
   LeadNotesCard,
   LeadStatusChanger,
   StatusHistoryTimeline,
-  EditLeadButton,
+  LeadPageHeaderActions,
   getLeadDetail,
   getLeadStatusHistory,
   getLeadAppointments,
@@ -26,10 +26,11 @@ import {
   updateLeadStatus,
   addNote,
   getLeadSummary,
+  LeadAppointmentsCard,
 } from "@features/leads"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
 import { Badge } from "@/src/components/ui/badge"
-import { Sparkles, Calendar, Clock } from "lucide-react"
+import { Sparkles, Clock } from "lucide-react"
 
 type LeadDetailPageProps = {
   params: Promise<{ leadId: string }>
@@ -65,12 +66,11 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
 
   return (
     <div className="flex flex-col gap-6 pb-8">
-      {/* Header with status changer and edit button */}
-      <LeadDetailHeader 
-        lead={lead} 
-        cycleName={cycleName}
-        editButton={<EditLeadButton lead={lead} />}
-      >
+      {/* Registrar acciones en el header global */}
+      <LeadPageHeaderActions lead={lead} />
+      
+      {/* Header con info del lead y status changer */}
+      <LeadDetailHeader lead={lead} cycleName={cycleName}>
         <LeadStatusChanger
           leadId={lead.id}
           currentStatus={lead.status}
@@ -133,60 +133,7 @@ export default async function LeadDetailPage({ params }: LeadDetailPageProps) {
               </section>
 
               {/* Appointments */}
-              <section className="rounded-xl border bg-card overflow-hidden">
-                <div className="p-5 border-b">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="size-5 text-primary" />
-                      <h3 className="font-semibold">Citas</h3>
-                    </div>
-                    <Badge variant="secondary">{appointments.length}</Badge>
-                  </div>
-                </div>
-                <div className="p-5">
-                  {appointments.length > 0 ? (
-                    <div className="space-y-3">
-                      {appointments.map((apt) => (
-                        <div
-                          key={apt.id}
-                          className="flex items-center justify-between p-3 rounded-lg border bg-muted/20"
-                        >
-                          <div>
-                            <p className="text-sm font-medium capitalize">
-                              {apt.type || "Visita"}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(apt.starts_at).toLocaleDateString("es-MX", {
-                                weekday: "long",
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                          </div>
-                          <Badge
-                            variant={
-                              apt.status === "completed"
-                                ? "default"
-                                : apt.status === "cancelled"
-                                ? "destructive"
-                                : "secondary"
-                            }
-                          >
-                            {apt.status}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No hay citas programadas para este lead.
-                    </p>
-                  )}
-                </div>
-              </section>
+              <LeadAppointmentsCard lead={lead} appointments={appointments} />
 
               {/* Quick Stats */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
