@@ -2,7 +2,7 @@
 
 /**
  * Create Lead Server Action
- * Crea un nuevo lead manualmente
+ * Crea un nuevo lead manualmente, incluyendo la creación del contacto CRM
  */
 
 import { revalidatePath } from "next/cache";
@@ -56,26 +56,33 @@ export async function createLead(
     const currentSchool = formData.get("current_school") as string;
     const source = (formData.get("source") as string) || "direct";
 
-    // Construir nombres completos
-    const studentName = [
-        studentFirstName,
-        studentMiddleName,
-        studentLastNamePaternal,
-        studentLastNameMaternal,
-    ]
+    // 1. Crear contacto CRM primero (requerido por la FK)
+    const { data: contact, error: contactError } = await supabase
+        .from("crm_contacts")
+        .insert({
+            organization_id: profile.organization_id,
+            first_name: contactFirstName || null,
+            middle_name: contactMiddleName || null,
+            last_name_paternal: contactLastNamePaternal || null,
+            last_name_maternal: contactLastNameMaternal || null,
+            phone: contactPhone || null,
+            email: contactEmail || null,
+            source: source === "direct" ? "manual" : source,
+            updated_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+
+    if (contactError || !contact) {
+        console.error("Error creating contact:", contactError);
+        return { error: "Error al crear el contacto" };
+    }
+
+    // 2. Insertar lead (student_name y contact_full_name son columnas generadas)
+    const contactName = [contactFirstName, contactLastNamePaternal]
         .filter(Boolean)
         .join(" ");
 
-    const contactFullName = [
-        contactFirstName,
-        contactMiddleName,
-        contactLastNamePaternal,
-        contactLastNameMaternal,
-    ]
-        .filter(Boolean)
-        .join(" ");
-
-    // Insertar lead
     const { data: newLead, error } = await supabase
         .from("leads")
         .insert({
@@ -86,14 +93,14 @@ export async function createLead(
             student_middle_name: studentMiddleName || null,
             student_last_name_paternal: studentLastNamePaternal || null,
             student_last_name_maternal: studentLastNameMaternal || null,
-            student_name: studentName || null,
             contact_first_name: contactFirstName || null,
             contact_middle_name: contactMiddleName || null,
             contact_last_name_paternal: contactLastNamePaternal || null,
             contact_last_name_maternal: contactLastNameMaternal || null,
-            contact_full_name: contactFullName || null,
             contact_email: contactEmail || null,
             contact_phone: contactPhone || null,
+            contact_id: contact.id,
+            contact_name: contactName || null,
             grade_interest: gradeInterest || null,
             current_school: currentSchool || null,
         })
@@ -102,6 +109,8 @@ export async function createLead(
 
     if (error) {
         console.error("Error creating lead:", error);
+        // Intentar eliminar el contacto creado si falla el lead
+        await supabase.from("crm_contacts").delete().eq("id", contact.id);
         return { error: "Error al crear el lead" };
     }
 
