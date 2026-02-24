@@ -114,7 +114,7 @@ export function Sidebar({ organizationSlug, ...props }: SidebarProps) {
                 { title: "Leads", url: `/crm/leads`, icon: Contact, module: "crm" },
                 { title: "Calendar", url: `/crm/calendar`, icon: Calendar, module: "crm", action: "manage_appointments" },
                 { title: "Appointments", url: `/crm/appointments`, icon: Calendar, module: "crm", action: "manage_appointments" },
-                { title: "Templates", url: `/crm/templates`, icon: Mail, module: "crm", action: "manage_templates" },
+
                 { title: "WhatsApp", url: `/crm/whatsapp-templates`, icon: MessageSquare, module: "crm", action: "manage_whatsapp_templates" },
             ]
         },

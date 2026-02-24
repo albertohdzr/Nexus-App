@@ -170,38 +170,3 @@ export async function deleteOrganizationKnowledge(formData: FormData) {
   revalidatePath("/settings");
   return { success: true };
 }
-
-export async function upsertEmailTemplateBase(formData: FormData) {
-  const ctx = await getSettingsContext("manage_org");
-  if (!ctx.supabase || !ctx.profile) {
-    return { error: ctx.error };
-  }
-
-  const organization_id = formData.get("organization_id") as string;
-  const logo_url = (formData.get("logo_url") as string) || null;
-  const header_html = (formData.get("header_html") as string) || null;
-  const footer_html = (formData.get("footer_html") as string) || null;
-
-  if (!organization_id) {
-    return { error: "Organization ID is required" };
-  }
-
-  if (ctx.profile.organization_id !== organization_id) {
-    return { error: "You do not have permission to edit this organization" };
-  }
-  const { error } = await ctx.supabase.from("email_template_bases").upsert({
-    organization_id,
-    logo_url,
-    header_html,
-    footer_html,
-    updated_at: new Date().toISOString(),
-  }, { onConflict: "organization_id" });
-
-  if (error) {
-    console.error("Error saving email template base:", error);
-    return { error: "Failed to save email template base" };
-  }
-
-  revalidatePath("/settings");
-  return { success: true };
-}

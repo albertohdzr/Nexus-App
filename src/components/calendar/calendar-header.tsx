@@ -3,23 +3,11 @@
 import { format } from "date-fns";
 import { useState } from "react";
 import {
-  Bell,
   Calendar as CalendarIcon,
   Plus,
-  CheckCircle2,
-  Clock,
 } from "lucide-react";
 import { Button } from "@/src/components/ui/button";
 import { useCalendarStore } from "@/src/store/calendar-store";
-
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/src/components/ui/dropdown-menu";
 import { CreateEventDialog } from "./create-event-dialog";
 import { SchedulePopover } from "./schedule-popover";
 
@@ -60,56 +48,6 @@ export function CalendarHeader() {
             </div>
 
             <div className="flex items-center gap-1 md:gap-1.5 lg:gap-2 shrink-0">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="relative size-7 md:size-8 shrink-0"
-                  >
-                    <Bell className="size-4" />
-                    <span className="absolute top-1 right-1 size-1 bg-red-500 rounded-full" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80">
-                  <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 cursor-pointer">
-                    <div className="flex items-center gap-2 w-full">
-                      <CheckCircle2 className="size-4 text-green-500" />
-                      <span className="text-sm font-medium flex-1">
-                        Meeting confirmed
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        2m ago
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground pl-6">
-                      Daily checkin has been confirmed for tomorrow at 9:00 AM
-                    </p>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 cursor-pointer">
-                    <div className="flex items-center gap-2 w-full">
-                      <Clock className="size-4 text-blue-500" />
-                      <span className="text-sm font-medium flex-1">
-                        Reminder
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        15m ago
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground pl-6">
-                      Team Standup starts in 30 minutes
-                    </p>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="justify-center cursor-pointer">
-                    <span className="text-xs text-muted-foreground">
-                      View all notifications
-                    </span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
 
               <SchedulePopover>
                 <Button

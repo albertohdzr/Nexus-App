@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, Search } from "lucide-react"
+import { Search } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { Input } from "@/src/components/ui/input"
 import { Button } from "@/src/components/ui/button"
@@ -33,11 +33,7 @@ export function TopNav() {
                         className="w-full bg-muted/50 pl-9 shadow-none"
                     />
                 </div>
-                <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-5 w-5 text-muted-foreground" />
-                    <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
-                    <span className="sr-only">Notifications</span>
-                </Button>
+
             </div>
         </header>
     )

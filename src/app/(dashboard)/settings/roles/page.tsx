@@ -26,7 +26,6 @@ const MODULES = [
     actions: [
       { key: "access", label: "Acceso" },
       { key: "manage_appointments", label: "Citas" },
-      { key: "manage_templates", label: "Plantillas" },
       { key: "manage_whatsapp_templates", label: "WhatsApp" },
     ],
   },
