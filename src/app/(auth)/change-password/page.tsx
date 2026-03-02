@@ -30,31 +30,48 @@ export default function ChangePasswordPage() {
         setLoading(true)
 
         try {
+            // 1. Get current user BEFORE password change (session is still fully valid)
+            const { data: { user } } = await supabase.auth.getUser()
+
+            if (!user) {
+                toast.error("Sesión no válida. Inicia sesión de nuevo.")
+                router.push("/login")
+                return
+            }
+
+            // 2. Clear force_password_change flag FIRST (while current session is valid)
+            //    After updateUser(), Supabase triggers a token refresh that can
+            //    momentarily invalidate the session in production (Secure cookies).
+            const { error: profileError } = await supabase
+                .from("user_profiles")
+                .update({ force_password_change: false })
+                .eq("id", user.id)
+
+            if (profileError) {
+                console.error("Failed to update profile:", profileError)
+                toast.error("No se pudo actualizar tu perfil. Intenta de nuevo.")
+                return
+            }
+
+            // 3. Now change the password (this may trigger session refresh)
             const { error } = await supabase.auth.updateUser({
                 password: password
             })
 
             if (error) {
+                // Rollback: re-set the flag since password change failed
+                await supabase
+                    .from("user_profiles")
+                    .update({ force_password_change: true })
+                    .eq("id", user.id)
                 toast.error(error.message)
                 return
             }
 
-            // Update profile to set force_password_change to false
-            const { data: { user } } = await supabase.auth.getUser()
+            toast.success("Contraseña actualizada exitosamente")
 
-            if (user) {
-                const { error: profileError } = await supabase
-                    .from("user_profiles")
-                    .update({ force_password_change: false })
-                    .eq("id", user.id)
-
-                if (profileError) {
-                    console.error("Failed to update profile:", profileError)
-                    // Continue anyway as password is changed
-                }
-            }
-
-            toast.success("Password updated successfully")
+            // Small delay to let Supabase propagate the new session
+            await new Promise(resolve => setTimeout(resolve, 500))
             router.push("/home")
 
         } catch (error) {
