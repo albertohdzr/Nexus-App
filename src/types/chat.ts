@@ -27,6 +27,8 @@ export type Message = {
   media_id?: string | null;
   media_url?: string | null;
   media_path?: string | null;
+  direction?: "inbound" | "outbound";
+  role?: "user" | "assistant" | "system";
   payload?: MessagePayload | Record<string, unknown> | null;
 };
 

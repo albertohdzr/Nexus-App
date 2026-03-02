@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useHeaderActionsConfig, type HeaderAction } from "@/src/components/providers/header-actions-provider";
+import { NotificationBell } from "@/src/features/notifications/components/notification-bell";
 
 export function DashboardHeader() {
   const pathname = usePathname();
@@ -40,7 +41,7 @@ export function DashboardHeader() {
     if (segments.length === 0) return 'Dashboard';
 
     const lastSegment = segments[segments.length - 1];
-    
+
     // Check if last segment is an ID (e.g. UUID or long string), if so take the one before
     const isId = lastSegment.length > 20 || !isNaN(Number(lastSegment));
     const titleSegment = isId && segments.length > 1 ? segments[segments.length - 2] : lastSegment;
@@ -50,28 +51,28 @@ export function DashboardHeader() {
 
     // Special formatting map
     const specialTitles: Record<string, string> = {
-        crm: 'CRM',
-        chat: 'Chat',
-        admissions: 'Admissions',
-        finance: 'Finance',
-        settings: 'Settings',
-        bot: 'Bot',
-        directory: 'Directory',
-        leads: 'Leads',
-        calendar: 'Calendar',
-        appointments: 'Appointments',
+      crm: 'CRM',
+      chat: 'Chat',
+      admissions: 'Admissions',
+      finance: 'Finance',
+      settings: 'Settings',
+      bot: 'Bot',
+      directory: 'Directory',
+      leads: 'Leads',
+      calendar: 'Calendar',
+      appointments: 'Appointments',
     };
 
     if (specialTitles[titleSegment.toLowerCase()]) {
-        return specialTitles[titleSegment.toLowerCase()];
+      return specialTitles[titleSegment.toLowerCase()];
     }
 
     // Default formatting: Capitalize and replace hyphens
     return titleSegment
-        .replace(/[-_]/g, ' ')
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
+      .replace(/[-_]/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
 
   const title = getPageTitle(pathname);
@@ -101,10 +102,10 @@ export function DashboardHeader() {
     // Si tiene onClick, es un Button
     if (action.onClick) {
       return (
-        <Button 
-          key={action.id} 
-          variant={variant} 
-          size="sm" 
+        <Button
+          key={action.id}
+          variant={variant}
+          size="sm"
           onClick={action.onClick}
           className="gap-2 h-7"
         >
@@ -121,7 +122,7 @@ export function DashboardHeader() {
     <header className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3 border-b bg-card sticky top-0 z-10 w-full">
       <div className="flex items-center gap-3">
         <SidebarTrigger className="-ml-2" />
-        
+
         {/* Back button (si está configurado) */}
         {headerConfig?.backButton && (
           <>
@@ -238,6 +239,7 @@ export function DashboardHeader() {
           </DropdownMenuContent>
         </DropdownMenu>
 
+        <NotificationBell />
         <ThemeToggle />
       </div>
     </header>

@@ -391,7 +391,7 @@ export default function ChatWindow() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 z-0" ref={scrollRef}>
                 {messages.map((message) => {
-const isReceived = message.status === 'received';
+const isReceived = message.direction === 'inbound';
                     const displayTime = message.wa_timestamp || message.created_at;
                     const mediaId = message.media_id || message.payload?.media_id;
                     const mediaUrl = message.media_url || (message.media_path ? `/api/storage/media?path=${encodeURIComponent(message.media_path)}` : undefined);
