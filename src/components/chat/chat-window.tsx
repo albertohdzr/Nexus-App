@@ -13,6 +13,7 @@ import { Input } from "../ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { MoreVertical, Phone, Video, Smile, Send, Check, CheckCheck, Plus, Image as ImageIcon, X, FileText, Download, Hand, Mic, Search } from "lucide-react";
+import { ExportChatButton } from "@/src/components/chat/export-chat-button";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
 import { useChat } from "@/src/hooks/use-chat";
 import { useMediaRecorder } from "@/src/hooks/use-media-recorder";
@@ -23,7 +24,7 @@ export default function ChatWindow() {
     const searchParams = useSearchParams();
     const chatId = searchParams.get("chatId");
     const { messages, chat, activeSession, setChat } = useChat(chatId);
-    
+
     // Local State
     const [messageInput, setMessageInput] = useState("");
     const [captionInput, setCaptionInput] = useState("");
@@ -31,16 +32,16 @@ export default function ChatWindow() {
     const [isDragging, setIsDragging] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
-    
+
     // Custom Hooks
-    const { 
-        attachment, 
-        attachmentPreview, 
-        handleFileSelection, 
-        clearAttachment, 
-        ALLOWED_IMAGE_TYPES, 
-        ALLOWED_DOC_TYPES, 
-        ALLOWED_AUDIO_TYPES 
+    const {
+        attachment,
+        attachmentPreview,
+        handleFileSelection,
+        clearAttachment,
+        ALLOWED_IMAGE_TYPES,
+        ALLOWED_DOC_TYPES,
+        ALLOWED_AUDIO_TYPES
     } = useFileHandler();
 
     const { isRecording, startRecording, stopRecording } = useMediaRecorder({
@@ -120,7 +121,7 @@ export default function ChatWindow() {
         Boolean(activeSession?.ai_enabled) &&
         (activeSession?.status ?? "active") === "active" &&
         !activeSession?.closed_at;
-    
+
     const isInputLocked = !isWithin24Hours || isAiLocked;
     const windowRemainingMs = Math.max(0, (24 * 60 * 60 * 1000) - (now - lastReceivedTime));
 
@@ -355,10 +356,17 @@ export default function ChatWindow() {
                         <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                             <Search className="h-5 w-5" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
-                             <MoreVertical className="h-5 w-5" />
-                        </Button>
-                     </div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                                    <MoreVertical className="h-5 w-5" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                                <ExportChatButton chatId={chatId} chatName={chat?.name || chat?.phone_number || "chat"} />
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
                 </div>
             </div>
 
@@ -391,7 +399,7 @@ export default function ChatWindow() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 z-0" ref={scrollRef}>
                 {messages.map((message) => {
-const isReceived = message.direction === 'inbound';
+                    const isReceived = message.direction === 'inbound';
                     const displayTime = message.wa_timestamp || message.created_at;
                     const mediaId = message.media_id || message.payload?.media_id;
                     const mediaUrl = message.media_url || (message.media_path ? `/api/storage/media?path=${encodeURIComponent(message.media_path)}` : undefined);
@@ -469,7 +477,7 @@ const isReceived = message.direction === 'inbound';
                                                 <p className="text-xs text-muted-foreground uppercase">{String(mediaMime || "FILE").split('/')[1]}</p>
                                             </div>
                                             {mediaUrl && (
-                                                 <a href={mediaUrl} target="_blank" rel="noreferrer" download className="text-[#54656f] dark:text-[#aebac1] hover:bg-black/5 dark:hover:bg-white/10 p-1 rounded-full">
+                                                <a href={mediaUrl} target="_blank" rel="noreferrer" download className="text-[#54656f] dark:text-[#aebac1] hover:bg-black/5 dark:hover:bg-white/10 p-1 rounded-full">
                                                     <Download className="h-5 w-5" />
                                                 </a>
                                             )}
@@ -538,7 +546,7 @@ const isReceived = message.direction === 'inbound';
 
                 {/* Attachments & Emoji */}
                 <div className="flex items-center gap-2 mb-2">
-                     <Button
+                    <Button
                         type="button"
                         variant="ghost"
                         size="icon"
@@ -564,7 +572,7 @@ const isReceived = message.direction === 'inbound';
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start" className="mb-2">
-                             <input
+                            <input
                                 ref={fileInputRef}
                                 type="file"
                                 accept={[
@@ -613,7 +621,7 @@ const isReceived = message.direction === 'inbound';
                             clearAttachment();
                             setShowEmojiPicker(false);
                             const form = document.getElementById("message-form") as HTMLFormElement;
-                             if(form) form.reset();
+                            if (form) form.reset();
                         }
                     }}
                     id="message-form"

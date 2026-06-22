@@ -30,10 +30,10 @@ export function LeadNoteForm({
 
   return (
     <form action={formAction} className={cn("space-y-3", className)}>
-      <input type="hidden" name="leadId" value={leadId} />
+      <input type="hidden" name="lead_id" value={leadId} />
       <Input name="subject" placeholder="Título opcional" />
       <textarea
-        name="note"
+        name="content"
         placeholder="Escribe una nota para este lead..."
         className={textareaClassName}
       />

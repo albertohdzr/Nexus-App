@@ -10,12 +10,13 @@ import { cn } from "@/src/lib/utils"
 import type { LeadRecord } from "@/src/types/lead"
 
 type VisitsPageProps = {
-  searchParams?: { date?: string }
+  searchParams?: Promise<{ date?: string }>
 }
 
 const isValidDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value)
 
 export default async function VisitsPage({ searchParams }: VisitsPageProps) {
+  const params = (await searchParams) ?? {}
   const supabase = await createClient()
   const {
     data: { user },
@@ -37,8 +38,8 @@ export default async function VisitsPage({ searchParams }: VisitsPageProps) {
 
   const today = new Date()
   const todayStr = today.toISOString().slice(0, 10)
-  const selectedDate = searchParams?.date && isValidDate(searchParams.date)
-    ? searchParams.date
+  const selectedDate = params.date && isValidDate(params.date)
+    ? params.date
     : todayStr
 
   const startDate = new Date(`${selectedDate}T00:00:00`)
